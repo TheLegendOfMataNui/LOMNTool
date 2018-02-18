@@ -10,14 +10,15 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Vllg\Xs\Main.x";//@"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\onua.x";
+        public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\characters\kopa\Xs\swrd.x";//@"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Vllg\Xs\Main.x";//@"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\onua.x";
 
         static void Main(string[] args)
         {
+            Console.WriteLine("LOMNTool v" + System.Reflection.Assembly.GetEntryAssembly().GetName().Version.ToString());
+            Console.WriteLine("Inputs:");
             foreach (string arg in args)
                 Console.WriteLine("'" + arg + "'");
             Console.WriteLine();
-
 
             if (args.Length == 0)
             {
@@ -28,32 +29,44 @@ namespace LOMNTool
                 return;*/
             }
 
-            string extension = Path.GetExtension(args[0]);
-            if (extension == ".x")
+            foreach (string arg in args)
             {
-                XFile(args);
+                string extension = Path.GetExtension(arg);
+                if (extension == ".x")
+                {
+                    XFile(arg);
+                }
+                else
+                {
+                    Console.WriteLine("Unknown file extension '" + extension + "'!");
+                }
+
             }
-            else
-            {
-                Console.WriteLine("Unknown file extension '" + extension + "'!");
-                Console.WriteLine("Press any key to close...");
-                Console.ReadKey();
-            }
+            Console.WriteLine("Press any key to close...");
+            Console.ReadKey();
         }
 
-        public static void XFile(string[] args)
+        public static void XFile(string arg)
         {
-            using (FileStream stream = new FileStream(args[0], FileMode.Open))
+            Console.WriteLine("Processing X file '" + arg + "'...");
+            using (FileStream stream = new FileStream(arg, FileMode.Open))
             using (BinaryReader reader = new BinaryReader(stream))
             {
-                XFile file = new XFile(reader);
+#if !DEBUG
+                try
+                {
+#endif
+                    XFile file = new XFile(reader);
 
-                XUtils.ExportOBJ(file.Objects[0][1].Object, Path.ChangeExtension(args[0], ".obj"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds");
-
-                Console.WriteLine("Press any key to close...");
-                Console.ReadKey();
+                    XUtils.ExportOBJ(file.Objects[0][1].Object, Path.ChangeExtension(arg, ".obj"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds");
+#if !DEBUG
             }
-
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Exception: \n\n" + ex.ToString());
+                }
+#endif
+            }
         }
     }
 }

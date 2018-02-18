@@ -19,9 +19,19 @@ namespace D3DX
                 int vertexCount = (int)mesh["nVertices"].Values[0];
                 int faceCount = (int)mesh["nFaces"].Values[0];
 
-                XObject meshNormals = mesh[0].Object;
-                XObject meshTextureCoords = mesh[2].Object;
-                XObject meshMaterialList = mesh[3].Object;
+                XObject meshNormals = null;// = mesh[0].Object;
+                XObject meshTextureCoords = null;// = mesh[2].Object;
+                XObject meshMaterialList = null;// = mesh[3].Object;
+
+                foreach (XChildObject child in mesh.Children)
+                {
+                    if (child.Object.DataType.NameData == "MeshNormals")
+                        meshNormals = child.Object;
+                    else if (child.Object.DataType.NameData == "MeshTextureCoords")
+                        meshTextureCoords = child.Object;
+                    else if (child.Object.DataType.NameData == "MeshMaterialList")
+                        meshMaterialList = child.Object;
+                }
 
                 using (System.IO.StreamWriter writer = new System.IO.StreamWriter(filename, false))
                 using (System.IO.StreamWriter matWriter = new System.IO.StreamWriter(System.IO.Path.ChangeExtension(filename, ".mtl")))
