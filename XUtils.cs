@@ -19,9 +19,9 @@ namespace D3DX
                 int vertexCount = (int)mesh["nVertices"].Values[0];
                 int faceCount = (int)mesh["nFaces"].Values[0];
 
-                XObject meshNormals = null;// = mesh[0].Object;
-                XObject meshTextureCoords = null;// = mesh[2].Object;
-                XObject meshMaterialList = null;// = mesh[3].Object;
+                XObject meshNormals = null;
+                XObject meshTextureCoords = null;
+                XObject meshMaterialList = null;
 
                 foreach (XChildObject child in mesh.Children)
                 {
@@ -77,7 +77,6 @@ namespace D3DX
                     // Gather positions
                     for (int i = 0; i < vertexCount; i++)
                     {
-                        //Positions.Add(Vector((XObjectStructure)mesh["vertices"].Values[i]));
                         Vector3 pos = Vector((XObjectStructure)mesh["vertices"].Values[i]);
                         Vector4 pos2 = Vector3.Transform(pos, transform);
                         writer.WriteLine("v " + pos2.X + " " + pos2.Y + " " + pos2.Z);
@@ -87,9 +86,8 @@ namespace D3DX
                     int normalCount = (int)meshNormals["nNormals"].Values[0];
                     for (int i = 0; i < normalCount; i++)
                     {
-                        //Normals.Add(Vector((XObjectStructure)meshNormals["normals"].Values[i]));
                         Vector3 norm = Vector((XObjectStructure)meshNormals["normals"].Values[i]);
-                        Vector4 norm2 = Vector3.Transform(norm, transform); // This is correct because ToYUp has no translation
+                        Vector4 norm2 = Vector3.Transform(norm, transform);
                         writer.WriteLine("vn " + norm2.X + " " + norm2.Y + " " + norm2.Z);
                     }
 
@@ -132,14 +130,225 @@ namespace D3DX
                 }
             }
 
+            public static XFile ImportOBJ(string filename, Matrix transform, bool flipV = true, bool removeTextureExtension = true)
+            {
+                XFile result = new XFile(new XHeader(3, 3, XHeader.HeaderFormat.Binary, 32));
+
+                result.Templates.Add(XReader.NativeTemplates["XSkinMeshHeader"]);
+                result.Templates.Add(XReader.NativeTemplates["VertexDuplicationIndices"]);
+                result.Templates.Add(XReader.NativeTemplates["SkinWeights"]);
+
+                XTemplate vectorTemplate = XReader.NativeTemplates["Vector"];
+
+                XObject FrameObject = new XObject(new XToken(XToken.TokenID.NAME) { NameData = "Frame" }, "Root");
+                XObject FrameTransformMatrix = new XObject(new XToken(XToken.TokenID.NAME) { NameData = "FrameTransformMatrix" });
+                FrameTransformMatrix.Members.Add(new XObjectMember("frameMatrix", new XToken(XToken.TokenID.NAME) { NameData = "Matrix4x4" }, new XObjectStructure(XReader.NativeTemplates["Matrix4x4"], new XObjectMember("matrix", new XToken(XToken.TokenID.FLOAT), 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0))));
+                FrameObject.Children.Add(new XChildObject(FrameTransformMatrix, false));
+
+                // Read the obj file as one whole mesh
+                XObject MeshObject = XReader.NativeTemplates["Mesh"].Instantiate();
+                FrameObject.Children.Add(new XChildObject(MeshObject, false));
+                XObject MeshNormalsObject = XReader.NativeTemplates["MeshNormals"].Instantiate();
+                MeshObject.Children.Add(new XChildObject(MeshNormalsObject, false));
+                XObject MeshTextureCoordsObject = XReader.NativeTemplates["MeshTextureCoords"].Instantiate();
+                MeshObject.Children.Add(new XChildObject(MeshTextureCoordsObject, false));
+                XObject MeshMaterialListObject = XReader.NativeTemplates["MeshMaterialList"].Instantiate();
+                MeshObject.Children.Add(new XChildObject(MeshMaterialListObject, false));
+
+                List<string> materialNames = new List<string>(); // Store the names of materials so we can look up indexes to them.
+                int currentMaterial = 0;
+                using (System.IO.StreamReader reader = new System.IO.StreamReader(filename))
+                {
+                    while (!reader.EndOfStream)
+                    {
+                        string line = reader.ReadLine().Trim();
+                        if (String.IsNullOrEmpty(line))
+                            continue;
+
+                        string[] parts = line.Split(' ');
+                        
+                        if (parts[0] == "v")
+                        {
+                            Vector4 v = Vector3.Transform(new Vector3(Single.Parse(parts[1]), Single.Parse(parts[2]), Single.Parse(parts[3])), transform);
+                            MeshObject["vertices"].Values.Add(Vector(new Vector3(v.X, v.Y, v.Z)));
+                        }
+                        else if (parts[0] == "vn")
+                        {
+                            Vector4 v = Vector4.Transform(new Vector4(Single.Parse(parts[1]), Single.Parse(parts[2]), Single.Parse(parts[3]), 0.0f), transform);
+                            MeshNormalsObject["normals"].Values.Add(Vector(new Vector3(v.X, v.Y, v.Z)));
+                        }
+                        else if (parts[0] == "vt")
+                        {
+                            Vector2 coords = new Vector2(Single.Parse(parts[1]), Single.Parse(parts[2]));
+                            if (flipV)
+                                coords.Y = 1.0f - coords.Y;
+                            MeshTextureCoordsObject["textureCoords"].Values.Add(TexCoord(coords));
+                        }
+                        else if (parts[0] == "f")
+                        {
+                            // Handle each vertex in the polygon
+                            List<int> posIndices = new List<int>();
+                            List<int> normIndices = new List<int>();
+                            List<int> uvIndices = new List<int>();
+                            for (int i = 1; i < parts.Length; i++)
+                            {
+                                string[] components = parts[i].Split('/');
+                                posIndices.Add(Int32.Parse(components[0]) - 1);
+                                if (components.Length > 1 && components[1].Length > 0)
+                                    uvIndices.Add(Int32.Parse(components[1]) - 1);
+                                if (components.Length > 2 && components[2].Length > 0)
+                                    normIndices.Add(Int32.Parse(components[2]) - 1);
+                            }
+
+                            MeshObject["faces"].Values.Add(Face(posIndices));
+                            if (normIndices.Count > 0)
+                                MeshNormalsObject["faceNormals"].Values.Add(Face(normIndices));
+                            // Texture coordinates are directly linked to vertices
+
+                            MeshMaterialListObject["faceIndexes"].Values.Add(currentMaterial);
+                        }
+                        else if (parts[0] == "usemtl")
+                        {
+                            string matName = parts[1];
+                            if (materialNames.Contains(matName))
+                                currentMaterial = materialNames.IndexOf(matName);
+                            else
+                                Console.WriteLine("    [WARNING]: OBJ Material '" + matName + "' not found.");
+                        }
+                        else if (parts[0] == "mtllib")
+                        {
+                            // Parse material library!
+                            using (System.IO.StreamReader mtlReader = new System.IO.StreamReader(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(filename), parts[1])))
+                            {
+                                XObject MaterialObject = null;
+
+                                while (!mtlReader.EndOfStream)
+                                {
+                                    string mtlLine = mtlReader.ReadLine().Trim();
+
+                                    if (String.IsNullOrEmpty(mtlLine))
+                                        continue;
+
+                                    string[] mtlParts = mtlLine.Split(' ');
+
+                                    if (mtlParts[0] == "newmtl")
+                                    {
+                                        if (MaterialObject != null)
+                                            MeshMaterialListObject.Children.Add(new XChildObject(MaterialObject, false));
+                                        MaterialObject = XReader.NativeTemplates["Material"].Instantiate();
+                                        MaterialObject["faceColor"].Values.Add(ColorRGBA(1.0, 1.0, 1.0, 1.0));
+                                        MaterialObject["specularColor"].Values.Add(ColorRGB(1.0, 1.0, 1.0));
+                                        MaterialObject["power"].Values.Add(0.0);
+                                        MaterialObject["emissiveColor"].Values.Add(ColorRGB(0.0, 0.0, 0.0));
+                                        materialNames.Add(mtlLine.Substring(7));
+                                    }
+                                    else if (mtlParts[0] == "Kd")
+                                    {
+                                        MaterialObject["faceColor"].Values[0] = (ColorRGBA(Double.Parse(mtlParts[1]), Double.Parse(mtlParts[2]), Double.Parse(mtlParts[3]), 1.0));
+                                    }
+                                    else if (mtlParts[0] == "Ks")
+                                    {
+                                        MaterialObject["specularColor"].Values[0] = (ColorRGB(Double.Parse(mtlParts[1]), Double.Parse(mtlParts[2]), Double.Parse(mtlParts[3])));
+                                    }
+                                    else if (mtlParts[0] == "Ke")
+                                    {
+                                        MaterialObject["emissiveColor"].Values[0] = (ColorRGB(Double.Parse(mtlParts[1]), Double.Parse(mtlParts[2]), Double.Parse(mtlParts[3])));
+                                    }
+                                    else if (mtlParts[0] == "Ns")
+                                    {
+                                        MaterialObject["power"].Values[0] = (Double.Parse(mtlParts[1]));
+                                    }
+                                    else if (mtlParts[0] == "Tr")
+                                    {
+                                        (MaterialObject["faceColor"].Values[0] as XObjectStructure)["alpha"].Values[0] = 1.0 - Double.Parse(mtlParts[1]);
+                                    }
+                                    else if (mtlParts[0] == "d")
+                                    {
+                                        (MaterialObject["faceColor"].Values[0] as XObjectStructure)["alpha"].Values[0] = Double.Parse(mtlParts[1]);
+                                    }
+                                    else if (mtlParts[0] == "map_Kd")
+                                    {
+                                        XObject texFilename = XReader.NativeTemplates["TextureFilename"].Instantiate();
+                                        string texname = mtlLine.Substring(7);
+                                        if (removeTextureExtension)
+                                            texname = System.IO.Path.GetFileNameWithoutExtension(texname);
+                                        texFilename["filename"].Values.Add(texname);
+                                        MaterialObject.Children.Add(new XChildObject(texFilename, false));
+                                    }
+                                }
+
+                                if (MaterialObject != null)
+                                    MeshMaterialListObject.Children.Add(new XChildObject(MaterialObject, false));
+                            }
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine("    [INFO]: Ignored OBJ line '" + line + "'.");
+                        }
+                    }
+                }
+
+                // Fix all the counts.
+                MeshObject["nVertices"].Values.Add(MeshObject["vertices"].Values.Count);
+                MeshObject["nFaces"].Values.Add(MeshObject["faces"].Values.Count);
+                MeshNormalsObject["nNormals"].Values.Add(MeshNormalsObject["normals"].Values.Count);
+                MeshNormalsObject["nFaceNormals"].Values.Add(MeshNormalsObject["faceNormals"].Values.Count);
+                MeshTextureCoordsObject["nTextureCoords"].Values.Add(MeshTextureCoordsObject["textureCoords"].Values.Count);
+                MeshMaterialListObject["nMaterials"].Values.Add(MeshMaterialListObject.Children.Count); // Because MeshMaterialList is a restricted template, all children are guaranteed to be Material objects.
+                MeshMaterialListObject["nFaceIndexes"].Values.Add(MeshMaterialListObject["faceIndexes"].Values.Count);
+
+                result.Objects.Add(FrameObject);
+
+                return result;
+            }
+
             public static Vector3 Vector(XObjectStructure vector)
             {
                 return new Vector3((float)(double)vector["x"].Values[0], (float)(double)vector["y"].Values[0], (float)(double)vector["z"].Values[0]);
             }
 
+            public static XObjectStructure Vector(Vector3 vector)
+            {
+                return new XObjectStructure(XReader.NativeTemplates["Vector"], 
+                    new XObjectMember("x", new XToken(XToken.TokenID.FLOAT), vector.X),
+                    new XObjectMember("y", new XToken(XToken.TokenID.FLOAT), vector.Y),
+                    new XObjectMember("z", new XToken(XToken.TokenID.FLOAT), vector.Z));
+            }
+
             public static Vector2 TexCoord(XObjectStructure coords2d)
             {
                 return new Vector2((float)(double)coords2d["u"].Values[0], (float)(double)coords2d["v"].Values[0]);
+            }
+
+            public static XObjectStructure TexCoord(Vector2 uv)
+            {
+                return new XObjectStructure(XReader.NativeTemplates["Coords2d"],
+                    new XObjectMember("u", new XToken(XToken.TokenID.FLOAT), uv.X),
+                    new XObjectMember("v", new XToken(XToken.TokenID.FLOAT), uv.Y));
+            }
+
+            public static XObjectStructure Face(List<int> indices)
+            {
+                return new XObjectStructure(XReader.NativeTemplates["MeshFace"], 
+                    new XObjectMember("nFaceVertexIndices", new XToken(XToken.TokenID.DWORD), indices.Count),
+                    new XObjectMember("faceVertexIndices", new XToken(XToken.TokenID.DWORD), indices.Cast<object>().ToArray()));
+            }
+
+            public static XObjectStructure ColorRGB(double r, double g, double b)
+            {
+                return new XObjectStructure(XReader.NativeTemplates["ColorRGB"],
+                    new XObjectMember("red", new XToken(XToken.TokenID.FLOAT), r),
+                    new XObjectMember("green", new XToken(XToken.TokenID.FLOAT), g),
+                    new XObjectMember("blue", new XToken(XToken.TokenID.FLOAT), b));
+            }
+
+            public static XObjectStructure ColorRGBA(double r, double g, double b, double a)
+            {
+                return new XObjectStructure(XReader.NativeTemplates["ColorRGB"],
+                    new XObjectMember("red", new XToken(XToken.TokenID.FLOAT), r),
+                    new XObjectMember("green", new XToken(XToken.TokenID.FLOAT), g),
+                    new XObjectMember("blue", new XToken(XToken.TokenID.FLOAT), b),
+                    new XObjectMember("alpha", new XToken(XToken.TokenID.FLOAT), a));
             }
         }
     }

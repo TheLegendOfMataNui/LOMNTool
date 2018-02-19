@@ -18,9 +18,9 @@ namespace D3DX
             public List<XTemplate> Templates { get; } = new List<XTemplate>();
             public List<XObject> Objects { get; } = new List<XObject>();
 
-            public XFile()
+            public XFile(XHeader header)
             {
-
+                Header = header;
             }
 
             public XFile(BinaryReader reader)
@@ -30,7 +30,6 @@ namespace D3DX
 
                 foreach (XToken token in xReader.Tokens)
                 {
-                    //Console.WriteLine(token.ToString());
                     System.Diagnostics.Debug.WriteLine(token.ToString());
                 }
 
@@ -44,6 +43,30 @@ namespace D3DX
                     {
                         Objects.Add(new XObject(xReader));
                     }
+                }
+            }
+
+            public void Write(BinaryWriter writer)
+            {
+                Header.Write(writer);
+                XWriter xWriter = new XWriter();
+
+                foreach (XTemplate template in Templates)
+                {
+                    Console.WriteLine("    Writing template '" + template.Name + "'...");
+                    template.Write(xWriter);
+                }
+
+                foreach (XObject obj in Objects)
+                {
+                    Console.WriteLine("    Writing object '" + obj.Name + "'...");
+                    obj.Write(xWriter);
+                }
+
+                foreach (XToken token in xWriter.Tokens)
+                {
+                    System.Diagnostics.Debug.WriteLine(token.ToString());
+                    token.Write(writer, Header);
                 }
             }
         }
@@ -197,6 +220,12 @@ namespace D3DX
             public XToken(TokenID id)
             {
                 ID = id;
+                if (id == TokenID.FLOAT_LIST)
+                    FloatListData = new List<double>();
+                else if (id == TokenID.INTEGER_LIST)
+                    IntegerListData = new List<int>();
+                else if (id == TokenID.STRING)
+                    StringTerminator = TokenID.SEMICOLON;
             }
 
             public XToken(BinaryReader reader, XHeader header)
@@ -246,8 +275,53 @@ namespace D3DX
                         }
                         else
                         {
-                            throw new ArgumentOutOfRangeException("Header's precision was not 32 or 64.");
+                            throw new ArgumentOutOfRangeException("XToken: Header's precision was not 32 or 64.");
                         }
+                    }
+                }
+            }
+
+            public void Write(BinaryWriter writer, XHeader header)
+            {
+                writer.Write((ushort)ID);
+                if (ID == TokenID.NAME)
+                {
+                    byte[] bytes = Encoding.ASCII.GetBytes(NameData);
+                    writer.Write((int)bytes.Length);
+                    writer.Write(bytes);
+                }
+                else if (ID == TokenID.STRING)
+                {
+                    byte[] bytes = Encoding.ASCII.GetBytes(StringData);
+                    writer.Write((int)bytes.Length);
+                    writer.Write(bytes);
+                    writer.Write((ushort)StringTerminator);
+                }
+                else if (ID == TokenID.INTEGER)
+                {
+                    writer.Write((int)IntegerData);
+                }
+                else if (ID == TokenID.GUID)
+                {
+                    writer.Write(GUIDData.ToByteArray());
+                }
+                else if (ID == TokenID.INTEGER_LIST)
+                {
+                    writer.Write((int)IntegerListData.Count);
+                    foreach (int i in IntegerListData)
+                        writer.Write((int)i);
+                }
+                else if (ID == TokenID.FLOAT_LIST)
+                {
+                    writer.Write((int)FloatListData.Count);
+                    foreach (double d in FloatListData)
+                    {
+                        if (header.Precision == 64)
+                            writer.Write((double)d);
+                        else if (header.Precision == 32)
+                            writer.Write((float)d);
+                        else
+                            throw new ArgumentOutOfRangeException("XToken: Header's precision was not 32 or 64!");
                     }
                 }
             }
@@ -285,65 +359,65 @@ namespace D3DX
 
         public class XReader
         {
-            private static List<XTemplate> _nativeTemplates = null;
-            public static List<XTemplate> NativeTemplates
+            private static Dictionary<string, XTemplate> _nativeTemplates = null;
+            public static Dictionary<string, XTemplate> NativeTemplates
             {
                 get
                 {
                     if (_nativeTemplates == null)
                     {
-                        _nativeTemplates = new List<XTemplate>();
+                        _nativeTemplates = new Dictionary<string, XTemplate>();
                         // Time to init all the builtin templates... ugh
 
                         XTemplate animation = new XTemplate("Animation", new Guid("3D82AB4F-62DA-11cf-AB39-0020AF71E433"), new List<XTemplateRestriction>());
-                        _nativeTemplates.Add(animation);
+                        _nativeTemplates.Add(animation.Name, animation);
 
                         XTemplate animationKey = new XTemplate("AnimationKey", new Guid("10DD46A8-775B-11CF-8F52-0040333594A3"), null);
                         animationKey.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "keyType"));
                         animationKey.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nKeys"));
                         animationKey.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "TimedFloatKeys" }, "keys", new List<XToken>(new XToken[] { new XToken(XToken.TokenID.NAME) { NameData = "nKeys" } })));
-                        _nativeTemplates.Add(animationKey);
+                        _nativeTemplates.Add(animationKey.Name, animationKey);
 
                         XTemplate animationOptions = new XTemplate("AnimationOptions", new Guid("E2BF56C0-840F-11cf-8F52-0040333594A3"), null);
                         animationOptions.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "openclosed"));
                         animationOptions.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "positionquality"));
-                        _nativeTemplates.Add(animationOptions);
+                        _nativeTemplates.Add(animationOptions.Name, animationOptions);
 
                         XTemplate animationSet = new XTemplate("AnimationSet", new Guid("3D82AB50-62DA-11cf-AB39-0020AF71E433"), new List<XTemplateRestriction>(new XTemplateRestriction[] { new XTemplateRestriction("Animation", animation.GUID) }));
-                        _nativeTemplates.Add(animationSet);
+                        _nativeTemplates.Add(animationSet.Name, animationSet);
 
                         XTemplate animTicksPerSecond = new XTemplate("AnimTicksPerSecond", new Guid("9E415A43-7BA6-4a73-8743-B73D47E88476"), null);
                         animTicksPerSecond.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "AnimTicksPerSecond"));
-                        _nativeTemplates.Add(animTicksPerSecond);
+                        _nativeTemplates.Add(animTicksPerSecond.Name, animTicksPerSecond);
 
                         XTemplate boolean = new XTemplate("Boolean", new Guid("537da6a0-ca37-11d0-941c-0080c80cfa7b"), null);
                         boolean.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "truefalse"));
-                        _nativeTemplates.Add(boolean);
+                        _nativeTemplates.Add(boolean.Name, boolean);
 
                         XTemplate boolean2d = new XTemplate("Boolean2d", new Guid("4885AE63-78E8-11cf-8F52-0040333594A3"), null);
                         boolean2d.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = boolean.Name }, "u"));
                         boolean2d.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = boolean.Name }, "v"));
-                        _nativeTemplates.Add(boolean2d);
+                        _nativeTemplates.Add(boolean2d.Name, boolean2d);
 
                         XTemplate colorRGB = new XTemplate("ColorRGB", new Guid("D3E16E81-7835-11cf-8F52-0040333594A3"), null);
                         colorRGB.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "red"));
                         colorRGB.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "green"));
                         colorRGB.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "blue"));
-                        _nativeTemplates.Add(colorRGB);
+                        _nativeTemplates.Add(colorRGB.Name, colorRGB);
 
                         XTemplate colorRGBA = new XTemplate("ColorRGBA", new Guid("35FF44E0-6C7C-11cf-8F52-0040333594A3"), null);
                         colorRGBA.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "red"));
                         colorRGBA.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "green"));
                         colorRGBA.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "blue"));
                         colorRGBA.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "alpha"));
-                        _nativeTemplates.Add(colorRGBA);
+                        _nativeTemplates.Add(colorRGBA.Name, colorRGBA);
 
                         //CompressedAnimationSet
 
                         XTemplate coords2d = new XTemplate("Coords2d", new Guid("F6F23F44-7686-11cf-8F52-0040333594A3"), null);
                         coords2d.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "u"));
                         coords2d.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "v"));
-                        _nativeTemplates.Add(coords2d);
+                        _nativeTemplates.Add(coords2d.Name, coords2d);
 
                         // DeclData
 
@@ -366,11 +440,11 @@ namespace D3DX
                         // FloatKeys
 
                         XTemplate frame = new XTemplate("Frame", new Guid("3D82AB46-62DA-11CF-AB39-0020AF71E433"), new List<XTemplateRestriction>());
-                        _nativeTemplates.Add(frame);
+                        _nativeTemplates.Add(frame.Name, frame);
 
                         XTemplate frameTransformMatrix = new XTemplate("FrameTransformMatrix", new Guid("F6F23F41-7686-11cf-8F52-0040333594A3"), null);
                         frameTransformMatrix.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "Matrix4x4" }, "frameMatrix"));
-                        _nativeTemplates.Add(frameTransformMatrix);
+                        _nativeTemplates.Add(frameTransformMatrix.Name, frameTransformMatrix);
 
                         // FVFData
 
@@ -380,32 +454,32 @@ namespace D3DX
                         XTemplate indexedColor = new XTemplate("IndexedColor", new Guid("1630B820-7842-11cf-8F52-0040333594A3"), null);
                         indexedColor.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "index"));
                         indexedColor.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "ColorRGBA" }));
-                        _nativeTemplates.Add(indexedColor);
+                        _nativeTemplates.Add(indexedColor.Name, indexedColor);
 
                         XTemplate material = new XTemplate("Material", new Guid("3D82AB4D-62DA-11CF-AB39-0020AF71E433"), new List<XTemplateRestriction>());
                         material.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "ColorRGBA" }, "faceColor"));
                         material.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "power"));
                         material.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "ColorRGB" }, "specularColor"));
                         material.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "ColorRGB" }, "emissiveColor"));
-                        _nativeTemplates.Add(material);
+                        _nativeTemplates.Add(material.Name, material);
 
                         // MaterialWrap
 
                         XTemplate matrix4x4 = new XTemplate("Matrix4x4", new Guid("F6F23F45-7686-11cf-8F52-0040333594A3"), null);
                         matrix4x4.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "matrix", new List<XToken>() { new XToken(XToken.TokenID.INTEGER) { IntegerData = 16 } }));
-                        _nativeTemplates.Add(matrix4x4);
+                        _nativeTemplates.Add(matrix4x4.Name, matrix4x4);
 
                         XTemplate mesh = new XTemplate("Mesh", new Guid("3D82AB44-62DA-11CF-AB39-0020AF71E433"), new List<XTemplateRestriction>());
                         mesh.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nVertices"));
                         mesh.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "Vector" }, "vertices", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nVertices" } }));
                         mesh.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nFaces"));
                         mesh.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "MeshFace" }, "faces", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nFaces" } }));
-                        _nativeTemplates.Add(mesh);
+                        _nativeTemplates.Add(mesh.Name, mesh);
 
                         XTemplate meshFace = new XTemplate("MeshFace", new Guid("3D82AB5F-62DA-11cf-AB39-0020AF71E433"), null);
                         meshFace.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nFaceVertexIndices", null));
                         meshFace.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "faceVertexIndices", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nFaceVertexIndices" } }));
-                        _nativeTemplates.Add(meshFace);
+                        _nativeTemplates.Add(meshFace.Name, meshFace);
 
                         // MeshFaceWraps
 
@@ -413,24 +487,24 @@ namespace D3DX
                         meshMaterialList.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nMaterials"));
                         meshMaterialList.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nFaceIndexes"));
                         meshMaterialList.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "faceIndexes", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nFaceIndexes" } }));
-                        _nativeTemplates.Add(meshMaterialList);
+                        _nativeTemplates.Add(meshMaterialList.Name, meshMaterialList);
 
                         XTemplate meshNormals = new XTemplate("MeshNormals", new Guid("F6F23F43-7686-11cf-8F52-0040333594A3"), null);
                         meshNormals.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nNormals"));
                         meshNormals.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "Vector" }, "normals", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nNormals" } }));
                         meshNormals.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nFaceNormals"));
                         meshNormals.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "MeshFace" }, "faceNormals", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nFaceNormals" } }));
-                        _nativeTemplates.Add(meshNormals);
+                        _nativeTemplates.Add(meshNormals.Name, meshNormals);
 
                         XTemplate meshTextureCoords = new XTemplate("MeshTextureCoords", new Guid("F6F23F40-7686-11cf-8F52-0040333594A3"), null);
                         meshTextureCoords.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nTextureCoords"));
                         meshTextureCoords.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "Coords2d" }, "textureCoords", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nTextureCoords" } }));
-                        _nativeTemplates.Add(meshTextureCoords);
+                        _nativeTemplates.Add(meshTextureCoords.Name, meshTextureCoords);
 
                         XTemplate meshVertexColors = new XTemplate("MeshVertexColors", new Guid("1630B821-7842-11cf-8F52-0040333594A3"), null);
                         meshVertexColors.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nVertexColors"));
                         meshVertexColors.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "IndexedColor" }, "vertexColors", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nVertexColors" } }));
-                        _nativeTemplates.Add(meshVertexColors);
+                        _nativeTemplates.Add(meshVertexColors.Name, meshVertexColors);
 
                         // Patch
 
@@ -445,10 +519,17 @@ namespace D3DX
                         // PMVSplitRecord
 
                         // SkinWeights
+                        XTemplate skinWeights = new XTemplate("SkinWeights", new Guid("6F0D123B-BAD2-4167-A0D0-80224F25FABB"), null);
+                        skinWeights.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.LPSTR), "transformNodeName"));
+                        skinWeights.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nWeights"));
+                        skinWeights.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "vertexIndices", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nWeights" } }));
+                        skinWeights.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "weights", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nWeights" } }));
+                        skinWeights.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.NAME) { NameData = "Matrix4x4" }, "matrixOffset"));
+                        _nativeTemplates.Add(skinWeights.Name, skinWeights);
 
                         XTemplate textureFilename = new XTemplate("TextureFilename", new Guid("A42790E1-7810-11cf-8F52-0040333594A3"), null);
                         textureFilename.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.LPSTR), "filename"));
-                        _nativeTemplates.Add(textureFilename);
+                        _nativeTemplates.Add(textureFilename.Name, textureFilename);
 
                         // TimedFloatKeys
 
@@ -456,26 +537,26 @@ namespace D3DX
                         vector.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "x"));
                         vector.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "y"));
                         vector.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.FLOAT), "z"));
-                        _nativeTemplates.Add(vector);
+                        _nativeTemplates.Add(vector.Name, vector);
 
                         XTemplate vertexDuplicationIndices = new XTemplate("VertexDuplicationIndices", new Guid("B8D65549-D7C9-4995-89CF-53A9A8B031E3"), null);
                         vertexDuplicationIndices.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nIndices"));
                         vertexDuplicationIndices.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "nOriginalVertices"));
                         vertexDuplicationIndices.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "indices", new List<XToken>() { new XToken(XToken.TokenID.NAME) { NameData = "nIndices" } }));
-                        _nativeTemplates.Add(vertexDuplicationIndices);
+                        _nativeTemplates.Add(vertexDuplicationIndices.Name, vertexDuplicationIndices);
 
                         XTemplate vertexElement = new XTemplate("VertexElement", new Guid("F752461C-1E23-48f6-B9F8-8350850F336F"), null);
                         vertexElement.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "Type"));
                         vertexElement.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "Method"));
                         vertexElement.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "Usage"));
                         vertexElement.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.DWORD), "UsageIndex"));
-                        _nativeTemplates.Add(vertexElement);
+                        _nativeTemplates.Add(vertexElement.Name, vertexElement);
 
                         XTemplate xSkinMeshHeader = new XTemplate("XSkinMeshHeader", new Guid("3CF169CE-FF7C-44ab-93C0-F78F62D172E2"), null);
                         xSkinMeshHeader.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.WORD), "nMaxSkinWeightsPerVertex"));
                         xSkinMeshHeader.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.WORD), "nMaxSkinWeightsPerFace"));
                         xSkinMeshHeader.Members.Add(new XTemplateMember(new XToken(XToken.TokenID.WORD), "nBones"));
-                        _nativeTemplates.Add(xSkinMeshHeader);
+                        _nativeTemplates.Add(xSkinMeshHeader.Name, xSkinMeshHeader);
                     }
                     return _nativeTemplates;
                 }
@@ -525,9 +606,8 @@ namespace D3DX
                 foreach (XTemplate template in Templates)
                     if (template.Name == name)
                         return template;
-                foreach (XTemplate template in NativeTemplates)
-                    if (template.Name == name)
-                        return template;
+                if (NativeTemplates.ContainsKey(name))
+                    return NativeTemplates[name];
                 return null;
             }
 
@@ -536,7 +616,7 @@ namespace D3DX
                 foreach (XTemplate template in Templates)
                     if (template.GUID == guid)
                         return template;
-                foreach (XTemplate template in NativeTemplates)
+                foreach (XTemplate template in NativeTemplates.Values)
                     if (template.GUID == guid)
                         return template;
                 return null;
@@ -672,12 +752,16 @@ namespace D3DX
                 writer.Write(DataType);
                 if (Name != null)
                     writer.Write(new XToken(XToken.TokenID.NAME) { NameData = Name });
-                foreach (XToken token in Dimensions)
+                if (isArray)
                 {
-                    writer.Write(new XToken(XToken.TokenID.OBRACKET));
-                    writer.Write(token);
-                    writer.Write(new XToken(XToken.TokenID.CBRACKET));
+                    foreach (XToken token in Dimensions)
+                    {
+                        writer.Write(new XToken(XToken.TokenID.OBRACKET));
+                        writer.Write(token);
+                        writer.Write(new XToken(XToken.TokenID.CBRACKET));
+                    }
                 }
+                writer.Write(new XToken(XToken.TokenID.SEMICOLON));
             }
 
             public XObjectMember ReadMember(XTemplate template, List<XObjectMember> previousMembers, XReader reader, XObjectReader objReader)
@@ -855,6 +939,9 @@ namespace D3DX
                         if (reader.ReadToken().ID != XToken.TokenID.DOT)
                             throw new FormatException("Ellipses have more than two dots...");
                         RestrictionState = TemplateRestrictionState.Open;
+
+                        if (reader.ReadToken().ID != XToken.TokenID.CBRACE)
+                            throw new FormatException("XTemplate: Restriction ellipses must end with a CBRACE token!");
                     }
                     else
                     {
@@ -868,6 +955,57 @@ namespace D3DX
                 }
                 if (reader.ReadToken().ID != XToken.TokenID.CBRACE)
                     throw new FormatException("XTemplate: template must end with CBRACE token!");
+            }
+
+            public void Write(XWriter writer)
+            {
+                writer.Write(new XToken(XToken.TokenID.TEMPLATE));
+                writer.Write(new XToken(XToken.TokenID.NAME) { NameData = Name });
+                writer.Write(new XToken(XToken.TokenID.OBRACE));
+                writer.Write(new XToken(XToken.TokenID.GUID) { GUIDData = GUID });
+
+                foreach (XTemplateMember member in Members)
+                {
+                    member.Write(writer);
+                }
+
+                if (RestrictionState != TemplateRestrictionState.Closed)
+                {
+                    writer.Write(new XToken(XToken.TokenID.OBRACE));
+                    if (RestrictionState == TemplateRestrictionState.Open)
+                    {
+                        writer.Write(new XToken(XToken.TokenID.DOT));
+                        writer.Write(new XToken(XToken.TokenID.DOT));
+                        writer.Write(new XToken(XToken.TokenID.DOT));
+                    }
+                    else if (RestrictionState == TemplateRestrictionState.Restricted)
+                    {
+                        foreach (XTemplateRestriction restriction in Restrictions)
+                            restriction.Write(writer);
+                    }
+                    writer.Write(new XToken(XToken.TokenID.CBRACE));
+                }
+
+                writer.Write(new XToken(XToken.TokenID.CBRACE));
+            }
+
+            /// <summary>
+            /// Creates an XObject with the members and datatype of this XTemplate.
+            /// No values are assigned to the members.
+            /// </summary>
+            /// <param name="name">The optional name of the new XObject.</param>
+            /// <returns></returns>
+            public XObject Instantiate(string name = null)
+            {
+                XObject result = new XObject(new XToken(XToken.TokenID.NAME) { NameData = Name }, name);
+
+                foreach (XTemplateMember member in Members)
+                {
+                    XObjectMember objMember = new XObjectMember(member.Name, member.DataType);
+                    result.Members.Add(objMember);
+                }
+
+                return result;
             }
 
             public override string ToString()
@@ -912,6 +1050,21 @@ namespace D3DX
                     // Read object
                     Object = new XObject(reader);
                     IsReference = false;
+                }
+            }
+
+            public void Write(XWriter writer)
+            {
+                if (IsReference)
+                {
+                    writer.Write(new XToken(XToken.TokenID.OBRACE));
+                    writer.Write(new XToken(XToken.TokenID.NAME) { NameData = Object.Name });
+                    //writer.Write(new XToken(XToken.TokenID.GUID) { GUIDData = Object.GUID }); // TODO: Do we write the class GUID or the object GUID? I'm not certain.
+                    writer.Write(new XToken(XToken.TokenID.CBRACE));
+                }
+                else
+                {
+                    Object.Write(writer);
                 }
             }
 
@@ -965,16 +1118,116 @@ namespace D3DX
             }
         }
 
+        /// <summary>
+        /// Takes in member data in the form of doubles, floats, ints, and strings, and writes them to STRING, INTEGER_LIST and FLOAT_LIST tokens.
+        /// </summary>
+        public class XObjectWriter
+        {
+            public XWriter Writer { get; }
+            //private XToken.TokenID CurrentListType = XToken.TokenID.INVALID;
+
+            private XToken CurrentList = null;
+
+            public XObjectWriter(XWriter writer)
+            {
+                Writer = writer;
+            }
+
+            public void Write(object item)
+            {
+                if (item.GetType() == typeof(string))
+                {
+                    if (CurrentList != null)
+                    {
+                        Writer.Write(CurrentList);
+                        CurrentList = null;
+                    }
+                    Writer.Write(new XToken(XToken.TokenID.STRING) { StringData = item as string });
+                }
+                else if (item.GetType() == typeof(float) || item.GetType() == typeof(double))
+                {
+                    if (CurrentList != null)
+                    {
+                        if (CurrentList.ID != XToken.TokenID.FLOAT_LIST)
+                        {
+                            Writer.Write(CurrentList);
+                            CurrentList = new XToken(XToken.TokenID.FLOAT_LIST);
+                        }
+                    }
+                    else
+                    {
+                        CurrentList = new XToken(XToken.TokenID.FLOAT_LIST);
+                    }
+                    CurrentList.FloatListData.Add(Convert.ToDouble(item)); // can't cast because objects need to be unboxed and then cast
+                }
+                else if (item.GetType() == typeof(int))
+                {
+                    if (CurrentList != null)
+                    {
+                        if (CurrentList.ID != XToken.TokenID.INTEGER_LIST)
+                        {
+                            Writer.Write(CurrentList);
+                            CurrentList = new XToken(XToken.TokenID.INTEGER_LIST);
+                        }
+                    }
+                    else
+                    {
+                        CurrentList = new XToken(XToken.TokenID.INTEGER_LIST);
+                    }
+                    CurrentList.IntegerListData.Add((int)item);
+                }
+                else
+                {
+                    throw new FormatException("XObjectWriter: Cannot write primitive of type '" + item.GetType().Name + "'. Primitives must be string, float, double, or int.");
+                }
+            }
+
+            public void Dispose()
+            {
+                if (CurrentList != null)
+                {
+                    Writer.Write(CurrentList);
+                    CurrentList = null;
+                }
+            }
+        }
+
         public class XObjectMember
         {
             public string Name { get; }
             public XToken DataType { get; }
             public List<object> Values { get; set; } = new List<object>();
 
-            public XObjectMember(string name, XToken dataType)
+            public XObjectMember(string name, XToken dataType, params object[] values)
             {
                 Name = name;
                 DataType = dataType;
+                foreach (object value in values)
+                    Values.Add(value);
+            }
+
+            public void Write(XObjectWriter writer)
+            {
+                if (DataType.ID == XToken.TokenID.NAME)
+                {
+                    // Write XObjectStructures
+                    foreach (object value in Values)
+                    {
+                        XObjectStructure structure = value as XObjectStructure;
+                        foreach (XObjectMember member in structure.Members)
+                        {
+                            member.Write(writer);
+                        }
+                    }
+                }
+                else
+                {
+                    // Write primitives
+                    foreach (object value in Values)
+                    {
+                        writer.Write(value);
+                    }
+                }
             }
         }
 
@@ -1001,6 +1254,13 @@ namespace D3DX
                 {
                     Members.Add(member.ReadMember(Template, Members, reader, objReader));
                 }
+            }
+
+            public XObjectStructure(XTemplate template, params XObjectMember[] members)
+            {
+                Template = template;
+                foreach (XObjectMember member in members)
+                    Members.Add(member);
             }
         }
 
@@ -1029,9 +1289,10 @@ namespace D3DX
                 }
             }
 
-            public XObject()
+            public XObject(XToken dataType, string name = null)
             {
-
+                DataType = dataType;
+                Name = name;
             }
 
             public XObject(XReader reader)
@@ -1134,6 +1395,29 @@ namespace D3DX
                 {
                     throw new NotSupportedException("XObject: object s with a datatype other than a template are not supported (and I've never seen one in the wild or this message wouldn't be here!");
                 }
+            }
+
+            public void Write(XWriter writer)
+            {
+                writer.Write(DataType);
+                if (!String.IsNullOrEmpty(Name))
+                    writer.Write(new XToken(XToken.TokenID.NAME) { NameData = Name });
+                writer.Write(new XToken(XToken.TokenID.OBRACE));
+                if (GUID != Guid.Empty)
+                    writer.Write(new XToken(XToken.TokenID.GUID) { GUIDData = GUID });
+
+                XObjectWriter xWriter = new XObjectWriter(writer);
+                foreach (XObjectMember member in Members)
+                {
+                    member.Write(xWriter);
+                }
+                xWriter.Dispose();
+
+                foreach (XChildObject child in Children)
+                {
+                    child.Write(writer);
+                }
+                writer.Write(new XToken(XToken.TokenID.CBRACE));
             }
 
             public override string ToString()

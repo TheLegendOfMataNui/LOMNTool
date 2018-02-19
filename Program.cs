@@ -10,7 +10,15 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\characters\kopa\Xs\swrd.x";//@"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Vllg\Xs\Main.x";//@"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\onua.x";
+        //public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Bech\Xs\Plnt_backup.x";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Plnt_backup - Copy.x";
+        public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Plnt_backup.x";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\TremorColored.obj";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\TremorColored.x";
+        //@"C:\Program Files (x86)\LEGO Bionicle\Data\characters\ssss\Xs\ssss.x";
+        //@"C:\Program Files (x86)\LEGO Bionicle\Data\characters\kopa\Xs\swrd.x";
+        //@"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Vllg\Xs\Main.x";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\onua.x";
 
         static void Main(string[] args)
         {
@@ -22,11 +30,14 @@ namespace LOMNTool
 
             if (args.Length == 0)
             {
+#if DEBUG
                 args = new string[] { TestFile };
-                /*Console.WriteLine("Drag files onto LOMNTool.exe to work with them.");
+#else
+                Console.WriteLine("Drag files onto LOMNTool.exe to work with them.");
                 Console.WriteLine("Press any key to close...");
                 Console.ReadKey();
-                return;*/
+                return;
+#endif
             }
 
             foreach (string arg in args)
@@ -35,6 +46,10 @@ namespace LOMNTool
                 if (extension == ".x")
                 {
                     XFile(arg);
+                }
+                else if (extension == ".obj")
+                {
+                    OBJFile(arg);
                 }
                 else
                 {
@@ -66,6 +81,19 @@ namespace LOMNTool
                     Console.WriteLine("Exception: \n\n" + ex.ToString());
                 }
 #endif
+            }
+        }
+
+        public static void OBJFile(string arg)
+        {
+            Console.WriteLine("Processing OBJ mesh '" + arg + "'...");
+
+            XFile file = XUtils.ImportOBJ(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), true, true);
+
+            using (FileStream stream = new FileStream(Path.ChangeExtension(arg, ".x"), FileMode.Create))
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                file.Write(writer);
             }
         }
     }

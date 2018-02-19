@@ -1,6 +1,11 @@
 ﻿LOMNTool
 ========
 
+Usage Notes
+-----------
+
+Bionicle: The Legend of Mata Nui requires all material to have a texture mapped to them.
+
 Design Goal
 -----------
 
@@ -12,7 +17,7 @@ TODO
  - [ ] Legacy DirectX Mesh reading / writing (.x files)
    - [ ] Static
      - [X] Reading
-     - [ ] Importing from OBJ
+     - [X] Importing from OBJ
      - [ ] Importing from COLLADA
    - [ ] Skinned
      - [ ] Reading
