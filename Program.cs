@@ -10,9 +10,10 @@ namespace LOMNTool
 {
     public class Program
     {
+        public const string TestFile = @"C:\Users\Admin\Downloads\model.obj";
         //public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Bech\Xs\Plnt_backup.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Plnt_backup - Copy.x";
-        public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Plnt_backup.x";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Plnt_backup.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\TremorColored.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\TremorColored.x";
         //@"C:\Program Files (x86)\LEGO Bionicle\Data\characters\ssss\Xs\ssss.x";

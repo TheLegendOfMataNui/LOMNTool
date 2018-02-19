@@ -165,7 +165,7 @@ namespace D3DX
                         if (String.IsNullOrEmpty(line))
                             continue;
 
-                        string[] parts = line.Split(' ');
+                        string[] parts = line.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                         
                         if (parts[0] == "v")
                         {
