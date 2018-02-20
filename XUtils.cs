@@ -155,6 +155,11 @@ namespace D3DX
                 XObject MeshMaterialListObject = XReader.NativeTemplates["MeshMaterialList"].Instantiate();
                 MeshObject.Children.Add(new XChildObject(MeshMaterialListObject, false));
 
+                // Store the positions and UVs so we can weld the pairs together later
+                List<Vector3> positions = new List<Vector3>();
+                List<Vector2> uvs = new List<Vector2>();
+                List<List<Tuple<int, int>>> faces = new List<List<Tuple<int, int>>>(); // list of faces (list of <Pos index, UV index>). Not pretty, but it works.
+
                 List<string> materialNames = new List<string>(); // Store the names of materials so we can look up indexes to them.
                 int currentMaterial = 0;
                 using (System.IO.StreamReader reader = new System.IO.StreamReader(filename))
@@ -170,7 +175,8 @@ namespace D3DX
                         if (parts[0] == "v")
                         {
                             Vector4 v = Vector3.Transform(new Vector3(Single.Parse(parts[1]), Single.Parse(parts[2]), Single.Parse(parts[3])), transform);
-                            MeshObject["vertices"].Values.Add(Vector(new Vector3(v.X, v.Y, v.Z)));
+                            //MeshObject["vertices"].Values.Add(Vector(new Vector3(v.X, v.Y, v.Z)));
+                            positions.Add(new Vector3(v.X, v.Y, v.Z));
                         }
                         else if (parts[0] == "vn")
                         {
@@ -182,28 +188,36 @@ namespace D3DX
                             Vector2 coords = new Vector2(Single.Parse(parts[1]), Single.Parse(parts[2]));
                             if (flipV)
                                 coords.Y = 1.0f - coords.Y;
-                            MeshTextureCoordsObject["textureCoords"].Values.Add(TexCoord(coords));
+                            //MeshTextureCoordsObject["textureCoords"].Values.Add(TexCoord(coords));
+                            uvs.Add(coords);
                         }
                         else if (parts[0] == "f")
                         {
                             // Handle each vertex in the polygon
-                            List<int> posIndices = new List<int>();
+                            //List<int> posIndices = new List<int>();
                             List<int> normIndices = new List<int>();
-                            List<int> uvIndices = new List<int>();
+                            //List<int> uvIndices = new List<int>();
+                            List<Tuple<int, int>> face = new List<Tuple<int, int>>();
+
                             for (int i = 1; i < parts.Length; i++)
                             {
                                 string[] components = parts[i].Split('/');
-                                posIndices.Add(Int32.Parse(components[0]) - 1);
+                                int pindex = Int32.Parse(components[0]) - 1;
+                                int uvindex = -1;
                                 if (components.Length > 1 && components[1].Length > 0)
-                                    uvIndices.Add(Int32.Parse(components[1]) - 1);
+                                    uvindex = Int32.Parse(components[1]) - 1;
                                 if (components.Length > 2 && components[2].Length > 0)
                                     normIndices.Add(Int32.Parse(components[2]) - 1);
+
+                                face.Add(new Tuple<int, int>(pindex, uvindex));
                             }
 
-                            MeshObject["faces"].Values.Add(Face(posIndices));
+                            //MeshObject["faces"].Values.Add(Face(posIndices));
                             if (normIndices.Count > 0)
                                 MeshNormalsObject["faceNormals"].Values.Add(Face(normIndices));
                             // Texture coordinates are directly linked to vertices
+
+                            faces.Add(face);
 
                             MeshMaterialListObject["faceIndexes"].Values.Add(currentMaterial);
                         }
@@ -288,6 +302,19 @@ namespace D3DX
                     }
                 }
 
+                // Weld all the used combinations of <position, uv>.
+                List<List<int>> newFaces = null;
+                List<Tuple<Vector3, Vector2>> newPositionUVs = WeldTextureCoordinates(positions, uvs, faces, out newFaces);
+                foreach (Tuple<Vector3, Vector2> vdata in newPositionUVs)
+                {
+                    MeshObject["vertices"].Values.Add(Vector(vdata.Item1));
+                    MeshTextureCoordsObject["textureCoords"].Values.Add(TexCoord(vdata.Item2));
+                }
+                foreach (List<int> face in newFaces)
+                {
+                    MeshObject["faces"].Values.Add(Face(face));
+                }
+
                 // Fix all the counts.
                 MeshObject["nVertices"].Values.Add(MeshObject["vertices"].Values.Count);
                 MeshObject["nFaces"].Values.Add(MeshObject["faces"].Values.Count);
@@ -349,6 +376,33 @@ namespace D3DX
                     new XObjectMember("green", new XToken(XToken.TokenID.FLOAT), g),
                     new XObjectMember("blue", new XToken(XToken.TokenID.FLOAT), b),
                     new XObjectMember("alpha", new XToken(XToken.TokenID.FLOAT), a));
+            }
+
+            // This might be the ugliest C# code I've ever written. Just look at that signature! Ugh!
+            public static List<Tuple<Vector3, Vector2>> WeldTextureCoordinates(List<Vector3> positions, List<Vector2> uvs, List<List<Tuple<int, int>>> indices, out List<List<int>> newIndices)
+            {
+                List<Tuple<Vector3, Vector2>> results = new List<Tuple<Vector3, Vector2>>();
+                newIndices = new List<List<int>>();
+
+                foreach (List<Tuple<int, int>> face in indices)
+                {
+                    List<int> newFace = new List<int>();
+                    foreach (Tuple<int, int> indexPair in face)
+                    {
+                        if (!results.Contains(new Tuple<Vector3, Vector2>(positions[indexPair.Item1], uvs[indexPair.Item2])))
+                        {
+                            results.Add(new Tuple<Vector3, Vector2>(positions[indexPair.Item1], uvs[indexPair.Item2]));
+                            newFace.Add(results.Count - 1);
+                        }
+                        else
+                        {
+                            newFace.Add(results.IndexOf(new Tuple<Vector3, Vector2>(positions[indexPair.Item1], uvs[indexPair.Item2])));
+                        }
+                    }
+                    newIndices.Add(newFace);
+                }
+
+                return results;
             }
         }
     }
