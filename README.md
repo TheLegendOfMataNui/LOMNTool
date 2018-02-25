@@ -4,7 +4,7 @@
 Usage Notes
 -----------
 
-Bionicle: The Legend of Mata Nui requires all material to have a texture mapped to them.
+- Bionicle: The Legend of Mata Nui requires all materials to have a texture mapped to them.
 
 Design Goal
 -----------
@@ -13,7 +13,7 @@ LOMNTool should be used by dragging and dropping an assortment of files onto the
 
 TODO
 ----
- - [ ] Config reading / writing. I already have a class ready to drop in.
+ - [X] Config reading / writing
  - [ ] Legacy DirectX Mesh reading / writing (.x files)
    - [ ] Static
      - [X] Reading

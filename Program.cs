@@ -10,7 +10,8 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"C:\Users\Admin\Downloads\model.obj";
+        public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\COLLADA Test\conversion\Main.x";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Edited_files\Edited files\Mskc.obj";
         //public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Bech\Xs\Plnt_backup.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Plnt_backup - Copy.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Plnt_backup.x";
@@ -21,9 +22,14 @@ namespace LOMNTool
         //@"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Vllg\Xs\Main.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\onua.x";
 
+        public static INIConfig Config;
+
         static void Main(string[] args)
         {
             Console.WriteLine("LOMNTool v" + System.Reflection.Assembly.GetEntryAssembly().GetName().Version.ToString());
+
+            Config = new INIConfig("LOMNTool.ini");
+
             Console.WriteLine("Inputs:");
             foreach (string arg in args)
                 Console.WriteLine("'" + arg + "'");
@@ -41,8 +47,14 @@ namespace LOMNTool
 #endif
             }
 
+#if !DEBUG
+            try
+            {
+#endif
             foreach (string arg in args)
             {
+                Console.WriteLine("Processing file '" + arg + "'...");
+
                 string extension = Path.GetExtension(arg);
                 if (extension == ".x")
                 {
@@ -56,38 +68,47 @@ namespace LOMNTool
                 {
                     Console.WriteLine("Unknown file extension '" + extension + "'!");
                 }
-
             }
+            #if !DEBUG
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Exception: \n\n" + ex.ToString());
+            }
+            #endif
             Console.WriteLine("Press any key to close...");
             Console.ReadKey();
+            Config.Write("LOMNTool.ini");
         }
 
         public static void XFile(string arg)
         {
-            Console.WriteLine("Processing X file '" + arg + "'...");
             using (FileStream stream = new FileStream(arg, FileMode.Open))
             using (BinaryReader reader = new BinaryReader(stream))
             {
-#if !DEBUG
-                try
-                {
-#endif
                     XFile file = new XFile(reader);
 
-                    XUtils.ExportOBJ(file.Objects[0][1].Object, Path.ChangeExtension(arg, ".obj"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds");
-#if !DEBUG
-            }
-                catch (Exception ex)
+                string modelFormat = Config.GetValueOrDefault("Models", "Format", "DAE");
+                if (modelFormat == "OBJ")
                 {
-                    Console.WriteLine("Exception: \n\n" + ex.ToString());
+                    Console.WriteLine("    Writing OBJ file...");
+                    XUtils.ExportOBJ(file.Objects[0][1].Object, Path.ChangeExtension(arg, ".obj"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds");
                 }
-#endif
+                else if (modelFormat == "DAE")
+                {
+                    Console.WriteLine("    Writing DAE file...");
+                    Collada.Utils.ExportCOLLADA(file, Path.ChangeExtension(arg, ".dae"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds");
+                }
+                else
+                {
+                    Console.WriteLine("    [ERROR]: Invalid model format specified in LOMNTool.ini! (LOMNTool.ini:[Models].Format)");
+                }
             }
         }
 
         public static void OBJFile(string arg)
         {
-            Console.WriteLine("Processing OBJ mesh '" + arg + "'...");
+            Console.WriteLine("    Writing X file...");
 
             XFile file = XUtils.ImportOBJ(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), true, true);
 

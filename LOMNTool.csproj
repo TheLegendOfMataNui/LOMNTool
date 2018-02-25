@@ -50,6 +50,7 @@
   <ItemGroup>
     <Compile Include="Collada.cs" />
     <Compile Include="ColladaUtils.cs" />
+    <Compile Include="INIConfig.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="XFile.cs" />

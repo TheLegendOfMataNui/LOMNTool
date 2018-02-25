@@ -331,7 +331,7 @@ namespace D3DX
 
             public static Vector3 Vector(XObjectStructure vector)
             {
-                return new Vector3((float)(double)vector["x"].Values[0], (float)(double)vector["y"].Values[0], (float)(double)vector["z"].Values[0]);
+                return new Vector3(Convert.ToSingle(vector["x"].Values[0]), Convert.ToSingle(vector["y"].Values[0]), Convert.ToSingle(vector["z"].Values[0]));
             }
 
             public static XObjectStructure Vector(Vector3 vector)
@@ -344,7 +344,7 @@ namespace D3DX
 
             public static Vector2 TexCoord(XObjectStructure coords2d)
             {
-                return new Vector2((float)(double)coords2d["u"].Values[0], (float)(double)coords2d["v"].Values[0]);
+                return new Vector2(Convert.ToSingle(coords2d["u"].Values[0]), Convert.ToSingle(coords2d["v"].Values[0]));
             }
 
             public static XObjectStructure TexCoord(Vector2 uv)
@@ -378,6 +378,16 @@ namespace D3DX
                     new XObjectMember("alpha", new XToken(XToken.TokenID.FLOAT), a));
             }
 
+            public static Vector4 ColorRGBA(XObjectStructure color)
+            {
+                return new Vector4(Convert.ToSingle(color["red"].Values[0]), Convert.ToSingle(color["green"].Values[0]), Convert.ToSingle(color["blue"].Values[0]), Convert.ToSingle(color["alpha"].Values[0]));
+            }
+
+            public static Vector3 ColorRGB(XObjectStructure color)
+            {
+                return new Vector3(Convert.ToSingle(color["red"].Values[0]), Convert.ToSingle(color["green"].Values[0]), Convert.ToSingle(color["blue"].Values[0]));
+            }
+
             // This might be the ugliest C# code I've ever written. Just look at that signature! Ugh!
             public static List<Tuple<Vector3, Vector2>> WeldTextureCoordinates(List<Vector3> positions, List<Vector2> uvs, List<List<Tuple<int, int>>> indices, out List<List<int>> newIndices)
             {
@@ -389,6 +399,11 @@ namespace D3DX
                     List<int> newFace = new List<int>();
                     foreach (Tuple<int, int> indexPair in face)
                     {
+                        if (indexPair.Item1 >= positions.Count)
+                            throw new Exception("Face index refers to a position that doesn't exist! positions.Count = " + positions.Count + ", indexPair.Item1 = " + indexPair.Item1);
+                        if (indexPair.Item2 >= uvs.Count)
+                            throw new Exception("Face index refers to a uv that doesn't exist! uvs.Count = " + uvs.Count + ", indexPair.Item2 = " + indexPair.Item2);
+
                         if (!results.Contains(new Tuple<Vector3, Vector2>(positions[indexPair.Item1], uvs[indexPair.Item2])))
                         {
                             results.Add(new Tuple<Vector3, Vector2>(positions[indexPair.Item1], uvs[indexPair.Item2]));
