@@ -28,7 +28,7 @@ namespace LOMNTool
         {
             Console.WriteLine("LOMNTool v" + System.Reflection.Assembly.GetEntryAssembly().GetName().Version.ToString());
 
-            Config = new INIConfig("LOMNTool.ini");
+            Config = new INIConfig(Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location), "LOMNTool.ini"));
 
             Console.WriteLine("Inputs:");
             foreach (string arg in args)
@@ -78,7 +78,7 @@ namespace LOMNTool
             #endif
             Console.WriteLine("Press any key to close...");
             Console.ReadKey();
-            Config.Write("LOMNTool.ini");
+            Config.Write(Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location), "LOMNTool.ini"));
         }
 
         public static void XFile(string arg)
