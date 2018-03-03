@@ -133,7 +133,7 @@ namespace LOMNTool
                     if (line.StartsWith("#"))
                         continue; // Comment
 
-                    string[] data = line.Split(' ');
+                    string[] data = line.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                     if (line.StartsWith("v"))
                     {
                         vertices.Add(new Vector3(Single.Parse(data[1]), Single.Parse(data[2]), Single.Parse(data[3])));
