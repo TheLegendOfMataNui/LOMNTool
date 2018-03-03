@@ -147,7 +147,7 @@ namespace LOMNTool
         {
             BCLFile file = LOMNTool.BCLFile.ImportOBJ(arg);
 
-            using (FileStream stream = new FileStream(arg.Substring(0, arg.Length - 8), FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (FileStream stream = new FileStream(arg.Substring(0, arg.Length - 8) + ".bcl", FileMode.Create, FileAccess.Write, FileShare.Read))
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 file.Write(writer);
