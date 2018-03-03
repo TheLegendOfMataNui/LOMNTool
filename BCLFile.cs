@@ -80,7 +80,7 @@ namespace LOMNTool
                 writer.Write(v.Z);
             }
 
-            writer.Write((uint)Triangles.Count);
+            writer.Write((ushort)Triangles.Count);
             foreach (Triangle t in Triangles)
             {
                 t.Write(writer);
@@ -103,17 +103,64 @@ namespace LOMNTool
                 {
                     if (lastMaterial != t.Unk01)
                     {
-                        writer.WriteLine("usemtl Material_" + t.Unk01);
+                        writer.WriteLine("usemtl Material_" + t.Unk01 + "_Mat");
                         lastMaterial = t.Unk01;
 
                         if (!writtenMaterials.Contains(t.Unk01))
                         {
-                            matWriter.WriteLine("newmtl Material_" + t.Unk01);
+                            matWriter.WriteLine("newmtl Material_" + t.Unk01 + "_Mat");
                             writtenMaterials.Add(t.Unk01);
                         }
                     }
                     writer.WriteLine("f " + (t.Index1 + 1) + " " + (t.Index2 + 1) + " " + (t.Index3 + 1));
                 }
+            }
+        }
+
+        public static BCLFile ImportOBJ(string filename)
+        {
+            using (StreamReader reader = new StreamReader(filename))
+            {
+                List<Vector3> vertices = new List<Vector3>();
+                List<Triangle> triangles = new List<Triangle>();
+
+                ushort currentMaterial = 0xFFFF;
+
+                while (!reader.EndOfStream)
+                {
+                    string line = reader.ReadLine().Trim();
+
+                    if (line.StartsWith("#"))
+                        continue; // Comment
+
+                    string[] data = line.Split(' ');
+                    if (line.StartsWith("v"))
+                    {
+                        vertices.Add(new Vector3(Single.Parse(data[1]), Single.Parse(data[2]), Single.Parse(data[3])));
+                    }
+                    else if (line.StartsWith("f"))
+                    {
+                        string[] v1 = data[1].Split('/');
+                        string[] v2 = data[2].Split('/');
+                        string[] v3 = data[3].Split('/');
+
+                        triangles.Add(new Triangle((ushort)(UInt16.Parse(v1[0]) - 1), (ushort)(UInt16.Parse(v2[0]) - 1), (ushort)(UInt16.Parse(v3[0]) - 1), currentMaterial));
+                    }
+                    else if (line.StartsWith("usemtl"))
+                    {
+                        string materialName = data[1].ToLower();
+                        if (materialName.StartsWith("material_"))
+                        {
+                            currentMaterial = UInt16.Parse(materialName.Split('_')[1]);
+                        }
+                        else
+                        {
+                            Console.WriteLine("[WARNING]: Couldn't parse material index from material name '" + materialName + "'!");
+                        }
+                    }
+                }
+
+                return new BCLFile(vertices, triangles);
             }
         }
     }

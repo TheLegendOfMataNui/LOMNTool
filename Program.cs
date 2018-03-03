@@ -57,7 +57,11 @@ namespace LOMNTool
                 Console.WriteLine("Processing file '" + arg + "'...");
 
                 string extension = Path.GetExtension(arg);
-                if (extension == ".x")
+                if (arg.EndsWith(".bcl.obj"))
+                {
+                    BCLOBJFile(arg);
+                }
+                else if (extension == ".x")
                 {
                     XFile(arg);
                 }
@@ -136,6 +140,17 @@ namespace LOMNTool
             {
                 BCLFile file = new BCLFile(reader);
                 file.ExportOBJ(Path.ChangeExtension(arg, ".bcl.obj"));
+            }
+        }
+
+        public static void BCLOBJFile(string arg)
+        {
+            BCLFile file = LOMNTool.BCLFile.ImportOBJ(arg);
+
+            using (FileStream stream = new FileStream(arg.Substring(0, arg.Length - 8), FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                file.Write(writer);
             }
         }
     }
