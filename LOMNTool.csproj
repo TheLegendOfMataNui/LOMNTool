@@ -48,6 +48,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="BCLFile.cs" />
     <Compile Include="Collada.cs" />
     <Compile Include="ColladaUtils.cs" />
     <Compile Include="INIConfig.cs" />

@@ -10,7 +10,8 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\COLLADA Test\conversion\Main.x";
+        public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Bech\Bcls\Becw.bcl";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\COLLADA Test\conversion\Main.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Edited_files\Edited files\Mskc.obj";
         //public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Bech\Xs\Plnt_backup.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Plnt_backup - Copy.x";
@@ -64,6 +65,10 @@ namespace LOMNTool
                 {
                     OBJFile(arg);
                 }
+                else if (extension == ".bcl")
+                {
+                    BCLFile(arg);
+                }
                 else
                 {
                     Console.WriteLine("Unknown file extension '" + extension + "'!");
@@ -116,6 +121,21 @@ namespace LOMNTool
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 file.Write(writer);
+            }
+        }
+
+        public static void OCLFile(string arg)
+        {
+
+        }
+
+        public static void BCLFile(string arg)
+        {
+            using (FileStream stream = new FileStream(arg, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (BinaryReader reader = new BinaryReader(stream))
+            {
+                BCLFile file = new BCLFile(reader);
+                file.ExportOBJ(Path.ChangeExtension(arg, ".bcl.obj"));
             }
         }
     }
