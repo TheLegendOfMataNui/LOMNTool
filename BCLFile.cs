@@ -134,11 +134,11 @@ namespace LOMNTool
                         continue; // Comment
 
                     string[] data = line.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    if (line.StartsWith("v"))
+                    if (data[0] == "v")
                     {
                         vertices.Add(new Vector3(Single.Parse(data[1]), Single.Parse(data[2]), Single.Parse(data[3])));
                     }
-                    else if (line.StartsWith("f"))
+                    else if (data[0] == "f")
                     {
                         string[] v1 = data[1].Split('/');
                         string[] v2 = data[2].Split('/');
@@ -146,7 +146,7 @@ namespace LOMNTool
 
                         triangles.Add(new Triangle((ushort)(UInt16.Parse(v1[0]) - 1), (ushort)(UInt16.Parse(v2[0]) - 1), (ushort)(UInt16.Parse(v3[0]) - 1), currentMaterial));
                     }
-                    else if (line.StartsWith("usemtl"))
+                    else if (data[0] == "usemtl")
                     {
                         string materialName = data[1].ToLower();
                         if (materialName.StartsWith("material_"))
