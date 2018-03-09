@@ -30,7 +30,7 @@ namespace D3DX
 
                 foreach (XToken token in xReader.Tokens)
                 {
-                    //System.Diagnostics.Debug.WriteLine(token.ToString());
+                    System.Diagnostics.Debug.WriteLine(token.ToString());
                 }
 
                 while (!xReader.EndOfStream)
