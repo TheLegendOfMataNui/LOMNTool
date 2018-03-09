@@ -22,6 +22,7 @@ namespace D3DX
                 XObject meshNormals = null;
                 XObject meshTextureCoords = null;
                 XObject meshMaterialList = null;
+                XObject meshVertexColors = null;
 
                 foreach (XChildObject child in mesh.Children)
                 {
@@ -31,6 +32,8 @@ namespace D3DX
                         meshTextureCoords = child.Object;
                     else if (child.Object.DataType.NameData == "MeshMaterialList")
                         meshMaterialList = child.Object;
+                    else if (LOMNTool.Program.Config.GetValueOrDefault("OBJ", "ExportVertexColors", "false").ToLower() == "true" && child.Object.DataType.NameData == "MeshVertexColors")
+                        meshVertexColors = child.Object;
                 }
 
                 using (System.IO.StreamWriter writer = new System.IO.StreamWriter(filename, false))
@@ -103,6 +106,36 @@ namespace D3DX
                         writer.WriteLine("vt " + uv.X + " " + uv.Y);
                     }
 
+                    if (meshVertexColors != null)
+                    {
+                        List<string> colorList = new List<string>();
+                        int colorCount = (int)meshVertexColors["nVertexColors"].Values[0];
+                        if (colorCount != vertexCount)
+                            throw new FormatException("ExportOBJ: Mesh vertex count (" + vertexCount + ") isn't equal to the vertex color count! (" + colorCount + ")");
+                        Vector4[] colors = new Vector4[colorCount];
+                        foreach (XObjectStructure value in meshVertexColors["vertexColors"].Values)
+                        {
+                            int index = (int)value["index"].Values[0];
+                            Vector4 color = XUtils.ColorRGBA((XObjectStructure)value.Members[1].Values[0]); // ["indexColor"]
+                            if (colors[index] == Vector4.Zero)
+                            {
+                                colors[index] = color;
+                            }
+                            else
+                            {
+                                Console.WriteLine("ExportCOLLADA: Multiple colors defined for vertex " + index + "!");
+                            }
+                        }
+
+                        for (int i = 0; i < colorCount; i++)
+                        {
+                            writer.WriteLine("vc " + colors[i].X.ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
+                                + colors[i].Y.ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
+                                + colors[i].Z.ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
+                                + colors[i].W.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        }
+                    }
+
                     // Write each face
                     int mtl = -1;
                     for (int i = 0; i < faceCount; i++)
@@ -123,7 +156,7 @@ namespace D3DX
                             int vIndex = (int)face["faceVertexIndices"].Values[v] + 1;
                             int nIndex = (int)faceNormals["faceVertexIndices"].Values[v] + 1;
 
-                            writer.Write(vIndex + "/" + vIndex + "/" + nIndex + " ");
+                            writer.Write(vIndex + "/" + vIndex + "/" + nIndex + (meshVertexColors != null ? "/" + vIndex : "") + " ");
                         }
                         writer.WriteLine();
                     }
@@ -133,6 +166,7 @@ namespace D3DX
             public static XFile ImportOBJ(string filename, Matrix transform, bool flipV = true, bool removeTextureExtension = true)
             {
                 XFile result = new XFile(new XHeader(3, 3, XHeader.HeaderFormat.Binary, 32));
+                bool hasColor = false;
 
                 result.Templates.Add(XReader.NativeTemplates["XSkinMeshHeader"]);
                 result.Templates.Add(XReader.NativeTemplates["VertexDuplicationIndices"]);
@@ -153,11 +187,13 @@ namespace D3DX
                 XObject MeshTextureCoordsObject = XReader.NativeTemplates["MeshTextureCoords"].Instantiate();
                 MeshObject.Children.Add(new XChildObject(MeshTextureCoordsObject, false));
                 XObject MeshMaterialListObject = XReader.NativeTemplates["MeshMaterialList"].Instantiate();
-                MeshObject.Children.Add(new XChildObject(MeshMaterialListObject, false));
+                XObject MeshVertexColorsObject = XReader.NativeTemplates["MeshVertexColors"].Instantiate();
 
                 // Store the positions and UVs so we can weld the pairs together later
                 List<Vector3> positions = new List<Vector3>();
                 List<Vector2> uvs = new List<Vector2>();
+                List<Vector4> colors = new List<Vector4>();
+                Dictionary<int, int> positionColors = new Dictionary<int, int>(); // Maps verteices by index to colors.
                 List<List<Tuple<int, int>>> faces = new List<List<Tuple<int, int>>>(); // list of faces (list of <Pos index, UV index>). Not pretty, but it works.
 
                 List<string> materialNames = new List<string>(); // Store the names of materials so we can look up indexes to them.
@@ -191,12 +227,20 @@ namespace D3DX
                             //MeshTextureCoordsObject["textureCoords"].Values.Add(TexCoord(coords));
                             uvs.Add(coords);
                         }
+                        else if (parts[0] == "vc")
+                        {
+                            if (!hasColor)
+                            {
+                                MeshObject.Children.Add(new XChildObject(MeshVertexColorsObject, false));
+                                hasColor = true;
+                            }
+                            Vector4 color = new Vector4(Single.Parse(parts[1]), Single.Parse(parts[2]), Single.Parse(parts[3]), Single.Parse(parts[4]));
+                            colors.Add(color);
+                        }
                         else if (parts[0] == "f")
                         {
                             // Handle each vertex in the polygon
-                            //List<int> posIndices = new List<int>();
                             List<int> normIndices = new List<int>();
-                            //List<int> uvIndices = new List<int>();
                             List<Tuple<int, int>> face = new List<Tuple<int, int>>();
 
                             for (int i = 1; i < parts.Length; i++)
@@ -208,11 +252,19 @@ namespace D3DX
                                     uvindex = Int32.Parse(components[1]) - 1;
                                 if (components.Length > 2 && components[2].Length > 0)
                                     normIndices.Add(Int32.Parse(components[2]) - 1);
+                                if (components.Length > 3 && components[3].Length > 0)
+                                {
+                                    // Set / overwrite color for position pindex.
+                                    int colorIndex = Int32.Parse(components[3]) - 1;
+                                    if (!positionColors.ContainsKey(pindex))
+                                        positionColors.Add(pindex, colorIndex);
+                                    else
+                                        positionColors[pindex] = colorIndex;
+                                }
 
                                 face.Add(new Tuple<int, int>(pindex, uvindex));
                             }
 
-                            //MeshObject["faces"].Values.Add(Face(posIndices));
                             if (normIndices.Count > 0)
                                 MeshNormalsObject["faceNormals"].Values.Add(Face(normIndices));
                             // Texture coordinates are directly linked to vertices
@@ -304,16 +356,40 @@ namespace D3DX
 
                 // Weld all the used combinations of <position, uv>.
                 List<List<int>> newFaces = null;
-                List<Tuple<Vector3, Vector2>> newPositionUVs = WeldTextureCoordinates(positions, uvs, faces, out newFaces);
-                foreach (Tuple<Vector3, Vector2> vdata in newPositionUVs)
+                List<Tuple<Vector3, Vector4>> inputs = new List<Tuple<Vector3, Vector4>>();
+                for (int i = 0; i < positions.Count; i++)
+                {
+                    if (hasColor)
+                    {
+                        // Make sure that position index has been assigned a color by a face set. (*/*/*/*)
+                        if (!positionColors.ContainsKey(i))
+                            throw new Exception("ImportOBJ: Vertex color was not specified for position index " + i + "!");
+                    }
+
+                    inputs.Add(new Tuple<Vector3, Vector4>(positions[i], hasColor ? colors[positionColors[i]] : Vector4.Zero));
+                }
+                List<Tuple<Vector3, Vector4, Vector2>> newPositionUVs = WeldTextureCoordinates(inputs, uvs, faces, out newFaces);
+                int vertex = 0;
+                foreach (Tuple<Vector3, Vector4, Vector2> vdata in newPositionUVs)
                 {
                     MeshObject["vertices"].Values.Add(Vector(vdata.Item1));
-                    MeshTextureCoordsObject["textureCoords"].Values.Add(TexCoord(vdata.Item2));
+                    MeshTextureCoordsObject["textureCoords"].Values.Add(TexCoord(vdata.Item3));
+                    if (hasColor)
+                    {
+                        Vector4 color = vdata.Item2;
+                        XObjectStructure indexColor = new XObjectStructure(XReader.NativeTemplates["IndexedColor"],
+                            new XObjectMember("index", new XToken(XToken.TokenID.DWORD), vertex),
+                            new XObjectMember("indexColor", new XToken(XToken.TokenID.NAME) { NameData = "ColorRGBA" }, ColorRGBA(color.X, color.Y, color.Z, color.W)));
+                        MeshVertexColorsObject["vertexColors"].Values.Add(indexColor);
+                    }
+                    vertex++;
                 }
                 foreach (List<int> face in newFaces)
                 {
                     MeshObject["faces"].Values.Add(Face(face));
                 }
+
+                MeshObject.Children.Add(new XChildObject(MeshMaterialListObject, false));
 
                 // Fix all the counts.
                 MeshObject["nVertices"].Values.Add(MeshObject["vertices"].Values.Count);
@@ -321,6 +397,7 @@ namespace D3DX
                 MeshNormalsObject["nNormals"].Values.Add(MeshNormalsObject["normals"].Values.Count);
                 MeshNormalsObject["nFaceNormals"].Values.Add(MeshNormalsObject["faceNormals"].Values.Count);
                 MeshTextureCoordsObject["nTextureCoords"].Values.Add(MeshTextureCoordsObject["textureCoords"].Values.Count);
+                MeshVertexColorsObject["nVertexColors"].Values.Add(MeshVertexColorsObject["vertexColors"].Values.Count);
                 MeshMaterialListObject["nMaterials"].Values.Add(MeshMaterialListObject.Children.Count); // Because MeshMaterialList is a restricted template, all children are guaranteed to be Material objects.
                 MeshMaterialListObject["nFaceIndexes"].Values.Add(MeshMaterialListObject["faceIndexes"].Values.Count);
 
@@ -371,7 +448,7 @@ namespace D3DX
 
             public static XObjectStructure ColorRGBA(double r, double g, double b, double a)
             {
-                return new XObjectStructure(XReader.NativeTemplates["ColorRGB"],
+                return new XObjectStructure(XReader.NativeTemplates["ColorRGBA"],
                     new XObjectMember("red", new XToken(XToken.TokenID.FLOAT), r),
                     new XObjectMember("green", new XToken(XToken.TokenID.FLOAT), g),
                     new XObjectMember("blue", new XToken(XToken.TokenID.FLOAT), b),
@@ -389,9 +466,9 @@ namespace D3DX
             }
 
             // This might be the ugliest C# code I've ever written. Just look at that signature! Ugh!
-            public static List<Tuple<Vector3, Vector2>> WeldTextureCoordinates(List<Vector3> positions, List<Vector2> uvs, List<List<Tuple<int, int>>> indices, out List<List<int>> newIndices)
+            public static List<Tuple<Vector3, Vector4, Vector2>> WeldTextureCoordinates(List<Tuple<Vector3, Vector4>> positions, List<Vector2> uvs, List<List<Tuple<int, int>>> indices, out List<List<int>> newIndices)
             {
-                List<Tuple<Vector3, Vector2>> results = new List<Tuple<Vector3, Vector2>>();
+                List<Tuple<Vector3, Vector4, Vector2>> results = new List<Tuple<Vector3, Vector4, Vector2>>();
                 newIndices = new List<List<int>>();
 
                 foreach (List<Tuple<int, int>> face in indices)
@@ -404,14 +481,15 @@ namespace D3DX
                         if (indexPair.Item2 >= uvs.Count)
                             throw new Exception("Face index refers to a uv that doesn't exist! uvs.Count = " + uvs.Count + ", indexPair.Item2 = " + indexPair.Item2);
 
-                        if (!results.Contains(new Tuple<Vector3, Vector2>(positions[indexPair.Item1], uvs[indexPair.Item2])))
+                        Tuple<Vector3, Vector4, Vector2> newValue = new Tuple<Vector3, Vector4, Vector2>(positions[indexPair.Item1].Item1, positions[indexPair.Item1].Item2, uvs[indexPair.Item2]);
+                        if (!results.Contains(newValue))
                         {
-                            results.Add(new Tuple<Vector3, Vector2>(positions[indexPair.Item1], uvs[indexPair.Item2]));
+                            results.Add(newValue);
                             newFace.Add(results.Count - 1);
                         }
                         else
                         {
-                            newFace.Add(results.IndexOf(new Tuple<Vector3, Vector2>(positions[indexPair.Item1], uvs[indexPair.Item2])));
+                            newFace.Add(results.IndexOf(newValue));
                         }
                     }
                     newIndices.Add(newFace);
