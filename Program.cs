@@ -141,6 +141,7 @@ namespace LOMNTool
             {
                 OCLFile file = new LOMNTool.OCLFile(reader);
                 file.LogDebug();
+                file.DumpOBJ(Path.ChangeExtension(arg, ".ocl.obj"));
             }
         }
 
