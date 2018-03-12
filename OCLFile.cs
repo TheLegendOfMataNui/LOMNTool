@@ -22,30 +22,47 @@ namespace LOMNTool
             {
                 public Vector3 Normal;
                 public float OddThing; // Normal.X * Position1.X - Normal.Y * Position1.Y + Normal.Z * Position1.Z
-                public float Unk05; // Some obscure formula I can't discern
+                public float Angle; // Some obscure formula I can't discern
                 public Vector3 Position1;
                 public Vector3 Position2;
                 public Vector3 Position3;
                 public Vector3 One; // Always 1.0f, 1.0f, 1.0f
-                public uint Unk09; // 0x48
-                public uint Unk10; // 0x4C
+                public uint MaterialIndex; // 0x48
+                public uint Unk10; // 0x4C, LSB is 0x01, others are garbage.
 
                 public Triangle(BinaryReader reader)
                 {
                     Normal = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                     OddThing = reader.ReadSingle();
-                    Unk05 = reader.ReadSingle();
+                    Angle = reader.ReadSingle();
                     Position1 = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                     Position2 = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                     Position3 = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                     One = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-                    Unk09 = reader.ReadUInt32();
+                    MaterialIndex = reader.ReadUInt32();
                     Unk10 = reader.ReadUInt32();
+                }
+
+                private Vector3 CalculateNormal()
+                {
+                    Vector3 result = Vector3.Cross(Position2 - Position1, Position3 - Position1);
+                    result.Normalize();
+                    return result;
+                }
+
+                private float CalculateOddThing()
+                {
+                    return -Vector3.Dot(Normal, Position1);
+                }
+
+                private float CalculateAngle()
+                {
+                    return Math.Abs(90.0f - (float)Math.Acos(Vector3.Dot(Normal, Vector3.Up)) * 180.0f / MathUtil.Pi);
                 }
 
                 public override string ToString()
                 {
-                    return "Unk04: " + OddThing + ", Unk05: " + Unk05 + ", Unk09: " + Unk09.ToString("X8") + ", Unk10: " + Unk10.ToString("X8");
+                    return "OddThing: " + OddThing + ", Angle: " + Angle + ", MaterialIndex: " + MaterialIndex.ToString("X8") + ", Unk10: " + Unk10.ToString("X8");
                 }
             }
 
@@ -173,13 +190,14 @@ namespace LOMNTool
             if (node == null)
                 node = RootNode;
 
-            System.Diagnostics.Debug.WriteLine(prefix + "Min: " + node.Min.ToString() + ", Max: " + node.Max.ToString());
-            System.Diagnostics.Debug.WriteLine(prefix + "Index: " + node.Index.ToString("X4") + ", TriangleDataOffset: " + node.TriangleDataOffset.ToString("X8") + ", pPolyList: " + node.pPolyList.ToString("X8") + ", Node Type: " + node.Type.ToString());
-            System.Diagnostics.Debug.WriteLine(prefix + "Adjacency: " + (node.Adjacency != null ? node.Adjacency.ToString() : "(none)"));
+            System.Diagnostics.Debug.WriteLine(prefix + "[Node] Min: " + node.Min.ToString() + ", Max: " + node.Max.ToString());
+            //System.Diagnostics.Debug.WriteLine(prefix + "Index: " + node.Index.ToString("X4") + ", TriangleDataOffset: " + node.TriangleDataOffset.ToString("X8") + ", pPolyList: " + node.pPolyList.ToString("X8") + ", Node Type: " + node.Type.ToString());
+            //System.Diagnostics.Debug.WriteLine(prefix + "Adjacency: " + (node.Adjacency != null ? node.Adjacency.ToString() : "(none)"));
             System.Diagnostics.Debug.WriteLine(prefix + node.Triangles.Count.ToString("X8") + " Triangles:");
             foreach (OctreeNode.Triangle t in node.Triangles)
                 System.Diagnostics.Debug.WriteLine(prefix + " - " + t.ToString());
 
+            System.Diagnostics.Debug.WriteLine(prefix + "Child Nodes:");
             for (int i = 0; i < node.Children.Length; i++)
             {
                 if (node.Children[i] != null)

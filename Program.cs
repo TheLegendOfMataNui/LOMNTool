@@ -29,7 +29,7 @@ namespace LOMNTool
 
         static void Main(string[] args)
         {
-            Console.WriteLine("LOMNTool v" + System.Reflection.Assembly.GetEntryAssembly().GetName().Version.ToString());
+            Console.WriteLine("LOMNTool v OCL" + System.Reflection.Assembly.GetEntryAssembly().GetName().Version.ToString());
 
             Config = new INIConfig(Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location), "LOMNTool.ini"));
 
