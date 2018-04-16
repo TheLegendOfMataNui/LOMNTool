@@ -5,6 +5,8 @@ VisualStudioVersion = 15.0.27130.2027
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LOMNTool", "LOMNTool.csproj", "{BA4EAD50-49BE-4804-92FC-A87F7910D17F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LOMNEditor", "LOMNEditor\LOMNEditor.csproj", "{302819BC-8E25-4ED2-98B8-8FDAA7523B49}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +17,10 @@ Global
 		{BA4EAD50-49BE-4804-92FC-A87F7910D17F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BA4EAD50-49BE-4804-92FC-A87F7910D17F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BA4EAD50-49BE-4804-92FC-A87F7910D17F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{302819BC-8E25-4ED2-98B8-8FDAA7523B49}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{302819BC-8E25-4ED2-98B8-8FDAA7523B49}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{302819BC-8E25-4ED2-98B8-8FDAA7523B49}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{302819BC-8E25-4ED2-98B8-8FDAA7523B49}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

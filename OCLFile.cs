@@ -28,7 +28,10 @@ namespace LOMNTool
                 public Vector3 Position3;
                 public Vector3 One; // Always 1.0f, 1.0f, 1.0f
                 public uint MaterialIndex; // 0x48
-                public uint Unk10; // 0x4C, LSB is 0x01, others are garbage.
+                public byte Unk10; // 0x4C, LSB is 0x01, others are garbage.
+                public byte Padding0 = 0; // 0x4D, always 0x00
+                public byte Padding1 = 0; // 0x4E, always 0x00
+                public byte Padding2 = 0; // 0x4F, always 0x00
 
                 public Triangle(BinaryReader reader)
                 {
@@ -40,7 +43,36 @@ namespace LOMNTool
                     Position3 = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                     One = new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
                     MaterialIndex = reader.ReadUInt32();
-                    Unk10 = reader.ReadUInt32();
+                    Unk10 = reader.ReadByte();
+                    Padding0 = reader.ReadByte();
+                    Padding1 = reader.ReadByte();
+                    Padding2 = reader.ReadByte();
+                }
+
+                public void Write(BinaryWriter writer)
+                {
+                    writer.Write(Normal.X);
+                    writer.Write(Normal.Y);
+                    writer.Write(Normal.Z);
+                    writer.Write(OddThing);
+                    writer.Write(Angle);
+                    writer.Write(Position1.X);
+                    writer.Write(Position1.Y);
+                    writer.Write(Position1.Z);
+                    writer.Write(Position2.X);
+                    writer.Write(Position2.Y);
+                    writer.Write(Position2.Z);
+                    writer.Write(Position3.X);
+                    writer.Write(Position3.Y);
+                    writer.Write(Position3.Z);
+                    writer.Write(One.X);
+                    writer.Write(One.Y);
+                    writer.Write(One.Z);
+                    writer.Write(MaterialIndex);
+                    writer.Write(Unk10);
+                    writer.Write(Padding0);
+                    writer.Write(Padding1);
+                    writer.Write(Padding2);
                 }
 
                 private Vector3 CalculateNormal()
