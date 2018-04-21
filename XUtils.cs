@@ -107,6 +107,9 @@ namespace D3DX
                     int mtl = -1;
                     for (int i = 0; i < faceCount; i++)
                     {
+                        if ((int)(meshNormals["nFaceNormals"].Values[0]) == 0)
+                            Console.WriteLine("[ERROR]: No normals!");
+
                         XObjectStructure face = (XObjectStructure)mesh["faces"].Values[i];
                         XObjectStructure faceNormals = (XObjectStructure)meshNormals["faceNormals"].Values[i];
 
@@ -300,6 +303,29 @@ namespace D3DX
                             System.Diagnostics.Debug.WriteLine("    [INFO]: Ignored OBJ line '" + line + "'.");
                         }
                     }
+                }
+
+                // Fix up relative indices
+                List<List<Tuple<int, int>>> oldFaces = faces;
+                faces = new List<List<Tuple<int, int>>>();
+                foreach (List<Tuple<int, int>> face in oldFaces)
+                {
+                    List<Tuple<int, int>> newFace = new List<Tuple<int, int>>();
+                    foreach (Tuple<int, int> vertex in face)
+                    {
+                        int vIndex = vertex.Item1;
+                        if (vIndex < 0)
+                        {
+                            vIndex = positions.Count + vIndex + 1;
+                        }
+                        int uvIndex = vertex.Item2;
+                        if (uvIndex < 0)
+                        {
+                            uvIndex = uvs.Count + uvIndex + 1;
+                        }
+                        newFace.Add(new Tuple<int, int>(vIndex, uvIndex));
+                    }
+                    faces.Add(newFace);
                 }
 
                 // Weld all the used combinations of <position, uv>.
