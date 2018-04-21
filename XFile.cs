@@ -335,7 +335,7 @@ namespace D3DX
                 }
                 else if (ID == TokenID.STRING)
                 {
-                    result += ": '" + StringData + StringTerminator.ToString() + "'";
+                    result += ": '" + StringData + "'" + StringTerminator.ToString();
                 }
                 else if (ID == TokenID.INTEGER)
                 {
@@ -352,6 +352,22 @@ namespace D3DX
                 else if (ID == TokenID.FLOAT_LIST)
                 {
                     result += ": {" + String.Join(",", FloatListData) + "}";
+                }
+                else if (ID == TokenID.OBRACE)
+                {
+                    result = "{";
+                }
+                else if (ID == TokenID.CBRACE)
+                {
+                    result = "}";
+                }
+                else if (ID == TokenID.OBRACKET)
+                {
+                    result = "[";
+                }
+                else if (ID == TokenID.CBRACKET)
+                {
+                    result = "]";
                 }
                 return result;
             }

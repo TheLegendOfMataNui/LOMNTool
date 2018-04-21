@@ -130,6 +130,9 @@ namespace LOMNTool
                 {
                     string line = reader.ReadLine().Trim();
 
+                    if (line.Length == 0)
+                        continue;
+
                     if (line.StartsWith("#"))
                         continue; // Comment
 

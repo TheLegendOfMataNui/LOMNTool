@@ -10,7 +10,8 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\main.bcl.obj";
+        public const string TestFile = @"C:\Program Files (x86)\LEGO Media\LEGO Bionicle\data\levels\lev2\vllg\main.x";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\main.bcl.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main Omega.bcl.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Watr2.bcl.obj";
         //public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Bech\Bcls\Main.ocl";
@@ -114,6 +115,23 @@ namespace LOMNTool
                 {
                     Console.WriteLine("    Writing DAE file...");
                     Collada.Utils.ExportCOLLADA(file, Path.ChangeExtension(arg, ".dae"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds");
+                }
+                else if (modelFormat == "TXT")
+                {
+                    Console.WriteLine("    Dumping X tokens...");
+                    stream.Position = 0;
+                    XHeader header = new XHeader(reader);
+                    List<XTemplate> templates = new List<XTemplate>();
+                    List<XObject> objects = new List<XObject>();
+                    XReader xreader = new XReader(reader, header, templates, objects);
+
+                    using (StreamWriter writer = new StreamWriter(Path.ChangeExtension(arg, ".txt")))
+                    {
+                        foreach (XToken token in xreader.Tokens)
+                        {
+                            writer.WriteLine(token.ToString());
+                        }
+                    }
                 }
                 else
                 {
