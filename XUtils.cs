@@ -32,7 +32,7 @@ namespace D3DX
                         meshTextureCoords = child.Object;
                     else if (child.Object.DataType.NameData == "MeshMaterialList")
                         meshMaterialList = child.Object;
-                    else if (LOMNTool.Program.Config.GetValueOrDefault("OBJ", "ExportVertexColors", "false").ToLower() == "true" && child.Object.DataType.NameData == "MeshVertexColors")
+                    else if ((LOMNTool.Program.Config.GetValueOrDefault("OBJ", "ExportVertexColors", "false").ToLower() == "true" || LOMNTool.Program.Config.GetValueOrDefault("OBJ", "ExportVertexColors", "false").ToLower() == "zbrush") && child.Object.DataType.NameData == "MeshVertexColors")
                         meshVertexColors = child.Object;
                 }
 
@@ -85,6 +85,16 @@ namespace D3DX
                         writer.WriteLine("v " + pos2.X + " " + pos2.Y + " " + pos2.Z);
                     }
 
+                    /*if (LOMNTool.Program.Config.GetValueOrDefault("OBJ", "ExportVertexColors", "false").ToLower() == "zbrush" && meshVertexColors != null)
+                    {
+                        writer.WriteLine("\n\n# Here goes my attempt at writing the MRGB block for ZBrush polypaint:");
+
+                        writer.Write("#MRGB ");
+                        foreach 
+
+                        writer.WriteLine("# End of MRGB block");
+                    }*/
+
                     // Gather normals
                     int normalCount = (int)meshNormals["nNormals"].Values[0];
                     for (int i = 0; i < normalCount; i++)
@@ -108,7 +118,6 @@ namespace D3DX
 
                     if (meshVertexColors != null)
                     {
-                        List<string> colorList = new List<string>();
                         int colorCount = (int)meshVertexColors["nVertexColors"].Values[0];
                         if (colorCount != vertexCount)
                             throw new FormatException("ExportOBJ: Mesh vertex count (" + vertexCount + ") isn't equal to the vertex color count! (" + colorCount + ")");
@@ -127,13 +136,39 @@ namespace D3DX
                             }
                         }
 
-                        for (int i = 0; i < colorCount; i++)
+                        switch (LOMNTool.Program.Config.GetValueOrDefault("OBJ", "ExportVertexColors", "false").ToLower())
                         {
-                            writer.WriteLine("vc " + colors[i].X.ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
-                                + colors[i].Y.ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
-                                + colors[i].Z.ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
-                                + colors[i].W.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                            case "true":
+                                for (int i = 0; i < colorCount; i++)
+                                {
+                                    writer.WriteLine("vc " + colors[i].X.ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
+                                        + colors[i].Y.ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
+                                        + colors[i].Z.ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
+                                        + colors[i].W.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                                }
+                                break;
+                            case "zbrush":
+                                writer.WriteLine("\n\n# Here goes my attempt at writing the MRGB block for ZBrush polypaint:");
+
+                                writer.Write("#MRGB ");
+                                
+                                for (int i = 0; i < colors.Length; i++)
+                                {
+                                    writer.Write("FF");
+                                    writer.Write(((byte)(colors[i].X * colors[i].W * 255)).ToString("X2"));
+                                    writer.Write(((byte)(colors[i].Y * colors[i].W * 255)).ToString("X2"));
+                                    writer.Write(((byte)(colors[i].Z * colors[i].W * 255)).ToString("X2"));
+
+                                    if (i % 64 == 0 && i > 0)
+                                    {
+                                        writer.Write("\n#MRGB ");
+                                    }
+                                }
+
+                                writer.WriteLine("\n# End of MRGB block\n");
+                                break;
                         }
+
                     }
 
                     // Write each face
