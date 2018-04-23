@@ -35,3 +35,7 @@ TODO
  - [ ] OSI bytecode
    - [ ] Decompiler
    - [ ] Compiler
+ - [X] BCL meshes
+   - [X] OBJ Export
+   - [X] OBJ Import
+ - [ ] OCL collision

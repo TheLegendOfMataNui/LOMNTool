@@ -43,7 +43,7 @@ namespace D3DX
                     // Write materials
                     for (int i = 0; i < (int)meshMaterialList["nMaterials"].Values[0]; i++)
                     {
-                        matWriter.WriteLine("newmtl Material" + i.ToString().PadLeft(3, '0'));
+                        matWriter.WriteLine("newmtl Material_" + i.ToString().PadLeft(3, '0') + "_Mat");
                         XObject material = meshMaterialList[i].Object;
                         XObjectStructure faceColor = (XObjectStructure)material["faceColor"].Values[0];
                         float specExponent = (float)(double)material["power"].Values[0];
@@ -175,13 +175,16 @@ namespace D3DX
                     int mtl = -1;
                     for (int i = 0; i < faceCount; i++)
                     {
+                        if ((int)(meshNormals["nFaceNormals"].Values[0]) == 0)
+                            Console.WriteLine("[ERROR]: No normals!");
+
                         XObjectStructure face = (XObjectStructure)mesh["faces"].Values[i];
                         XObjectStructure faceNormals = (XObjectStructure)meshNormals["faceNormals"].Values[i];
 
                         int newMaterialIndex = (int)meshMaterialList["faceIndexes"].Values[i];
                         if (newMaterialIndex != mtl)
                         {
-                            writer.WriteLine("usemtl Material" + newMaterialIndex.ToString().PadLeft(3, '0'));
+                            writer.WriteLine("usemtl Material_" + newMaterialIndex.ToString().PadLeft(3, '0') + "_Mat");
                             mtl = newMaterialIndex;
                         }
 
@@ -335,7 +338,11 @@ namespace D3DX
                                     if (mtlParts[0] == "newmtl")
                                     {
                                         if (MaterialObject != null)
+                                        {
                                             MeshMaterialListObject.Children.Add(new XChildObject(MaterialObject, false));
+                                            if (MaterialObject.Children.Count == 0)
+                                                Console.WriteLine("[WARNING: Material at index " + (MeshMaterialListObject.Children.Count - 1) + " doesn't have a texture filename!");
+                                        }
                                         MaterialObject = XReader.NativeTemplates["Material"].Instantiate();
                                         MaterialObject["faceColor"].Values.Add(ColorRGBA(1.0, 1.0, 1.0, 1.0));
                                         MaterialObject["specularColor"].Values.Add(ColorRGB(1.0, 1.0, 1.0));
@@ -387,6 +394,29 @@ namespace D3DX
                             System.Diagnostics.Debug.WriteLine("    [INFO]: Ignored OBJ line '" + line + "'.");
                         }
                     }
+                }
+
+                // Fix up relative indices
+                List<List<Tuple<int, int>>> oldFaces = faces;
+                faces = new List<List<Tuple<int, int>>>();
+                foreach (List<Tuple<int, int>> face in oldFaces)
+                {
+                    List<Tuple<int, int>> newFace = new List<Tuple<int, int>>();
+                    foreach (Tuple<int, int> vert in face)
+                    {
+                        int vIndex = vert.Item1;
+                        if (vIndex < 0)
+                        {
+                            vIndex = positions.Count + vIndex + 1;
+                        }
+                        int uvIndex = vert.Item2;
+                        if (uvIndex < 0)
+                        {
+                            uvIndex = uvs.Count + uvIndex + 1;
+                        }
+                        newFace.Add(new Tuple<int, int>(vIndex, uvIndex));
+                    }
+                    faces.Add(newFace);
                 }
 
                 // Weld all the used combinations of <position, uv>.
