@@ -10,7 +10,13 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main.obj";
+        public const string TestFile = @"C:\Program Files (x86)\LEGO Media\LEGO Bionicle\data\levels\lev2\vllg\main.x";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\main.bcl.obj";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main Omega.bcl.obj";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Watr2.bcl.obj";
+        //public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Bech\Bcls\Main.ocl";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\COLLADA Test\conversion\Main.x";
+        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\COLLADA Test\conversion\Main.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Edited_files\Edited files\Mskc.obj";
         //public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Bech\Xs\Plnt_backup.x";
@@ -56,14 +62,26 @@ namespace LOMNTool
             {
                 Console.WriteLine("Processing file '" + arg + "'...");
 
-                string extension = Path.GetExtension(arg);
-                if (extension == ".x")
+                string extension = Path.GetExtension(arg.ToLower());
+                if (arg.EndsWith(".bcl.obj"))
+                {
+                    BCLOBJFile(arg);
+                }
+                else if (extension == ".x")
                 {
                     XFile(arg);
                 }
                 else if (extension == ".obj")
                 {
                     OBJFile(arg);
+                }
+                else if (extension == ".bcl")
+                {
+                    BCLFile(arg);
+                }
+                else if (extension == ".ocl")
+                {
+                    OCLFile(arg);
                 }
                 else
                 {
@@ -100,6 +118,23 @@ namespace LOMNTool
                     Console.WriteLine("    Writing DAE file...");
                     Collada.Utils.ExportCOLLADA(file, Path.ChangeExtension(arg, ".dae"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds");
                 }
+                else if (modelFormat == "TXT")
+                {
+                    Console.WriteLine("    Dumping X tokens...");
+                    stream.Position = 0;
+                    XHeader header = new XHeader(reader);
+                    List<XTemplate> templates = new List<XTemplate>();
+                    List<XObject> objects = new List<XObject>();
+                    XReader xreader = new XReader(reader, header, templates, objects);
+
+                    using (StreamWriter writer = new StreamWriter(Path.ChangeExtension(arg, ".txt")))
+                    {
+                        foreach (XToken token in xreader.Tokens)
+                        {
+                            writer.WriteLine(token.ToString());
+                        }
+                    }
+                }
                 else
                 {
                     Console.WriteLine("    [ERROR]: Invalid model format specified in LOMNTool.ini! (LOMNTool.ini:[Models].Format)");
@@ -114,6 +149,38 @@ namespace LOMNTool
             XFile file = XUtils.ImportOBJ(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), true, true);
 
             using (FileStream stream = new FileStream(Path.ChangeExtension(arg, ".x"), FileMode.Create))
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                file.Write(writer);
+            }
+        }
+
+        public static void OCLFile(string arg)
+        {
+            using (FileStream stream = new FileStream(arg, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (BinaryReader reader = new BinaryReader(stream))
+            {
+                OCLFile file = new LOMNTool.OCLFile(reader);
+                file.LogDebug();
+                file.DumpOBJ(Path.ChangeExtension(arg, ".ocl.obj"));
+            }
+        }
+
+        public static void BCLFile(string arg)
+        {
+            using (FileStream stream = new FileStream(arg, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (BinaryReader reader = new BinaryReader(stream))
+            {
+                BCLFile file = new BCLFile(reader);
+                file.ExportOBJ(Path.ChangeExtension(arg, ".bcl.obj"));
+            }
+        }
+
+        public static void BCLOBJFile(string arg)
+        {
+            BCLFile file = LOMNTool.BCLFile.ImportOBJ(arg);
+
+            using (FileStream stream = new FileStream(arg.Substring(0, arg.Length - 8) + ".bcl", FileMode.Create, FileAccess.Write, FileShare.Read))
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 file.Write(writer);
