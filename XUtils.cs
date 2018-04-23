@@ -321,72 +321,82 @@ namespace D3DX
                         }
                         else if (parts[0] == "mtllib")
                         {
+                            string mtlFilename = line.Substring("mtllib ".Length);
+                            mtlFilename = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(filename), mtlFilename);
+
                             // Parse material library!
-                            using (System.IO.StreamReader mtlReader = new System.IO.StreamReader(System.IO.Path.Combine(System.IO.Path.GetDirectoryName(filename), parts[1])))
+                            if (!System.IO.File.Exists(mtlFilename))
                             {
-                                XObject MaterialObject = null;
-
-                                while (!mtlReader.EndOfStream)
+                                Console.WriteLine("[WARNING]: OBJ references material library '" + mtlFilename + "' which does not exist.");
+                            }
+                            else
+                            {
+                                using (System.IO.StreamReader mtlReader = new System.IO.StreamReader(mtlFilename))
                                 {
-                                    string mtlLine = mtlReader.ReadLine().Trim();
+                                    XObject MaterialObject = null;
 
-                                    if (String.IsNullOrEmpty(mtlLine))
-                                        continue;
-
-                                    string[] mtlParts = mtlLine.Split(' ');
-
-                                    if (mtlParts[0] == "newmtl")
+                                    while (!mtlReader.EndOfStream)
                                     {
-                                        if (MaterialObject != null)
+                                        string mtlLine = mtlReader.ReadLine().Trim();
+
+                                        if (String.IsNullOrEmpty(mtlLine))
+                                            continue;
+
+                                        string[] mtlParts = mtlLine.Split(' ');
+
+                                        if (mtlParts[0] == "newmtl")
                                         {
-                                            MeshMaterialListObject.Children.Add(new XChildObject(MaterialObject, false));
-                                            if (MaterialObject.Children.Count == 0)
-                                                Console.WriteLine("[WARNING: Material at index " + (MeshMaterialListObject.Children.Count - 1) + " doesn't have a texture filename!");
+                                            if (MaterialObject != null)
+                                            {
+                                                MeshMaterialListObject.Children.Add(new XChildObject(MaterialObject, false));
+                                                if (MaterialObject.Children.Count == 0)
+                                                    Console.WriteLine("[WARNING: Material at index " + (MeshMaterialListObject.Children.Count - 1) + " doesn't have a texture filename!");
+                                            }
+                                            MaterialObject = XReader.NativeTemplates["Material"].Instantiate();
+                                            MaterialObject["faceColor"].Values.Add(ColorRGBA(1.0, 1.0, 1.0, 1.0));
+                                            MaterialObject["specularColor"].Values.Add(ColorRGB(1.0, 1.0, 1.0));
+                                            MaterialObject["power"].Values.Add(0.0);
+                                            MaterialObject["emissiveColor"].Values.Add(ColorRGB(0.0, 0.0, 0.0));
+                                            materialNames.Add(mtlLine.Substring(7));
                                         }
-                                        MaterialObject = XReader.NativeTemplates["Material"].Instantiate();
-                                        MaterialObject["faceColor"].Values.Add(ColorRGBA(1.0, 1.0, 1.0, 1.0));
-                                        MaterialObject["specularColor"].Values.Add(ColorRGB(1.0, 1.0, 1.0));
-                                        MaterialObject["power"].Values.Add(0.0);
-                                        MaterialObject["emissiveColor"].Values.Add(ColorRGB(0.0, 0.0, 0.0));
-                                        materialNames.Add(mtlLine.Substring(7));
+                                        else if (mtlParts[0] == "Kd")
+                                        {
+                                            MaterialObject["faceColor"].Values[0] = (ColorRGBA(Double.Parse(mtlParts[1]), Double.Parse(mtlParts[2]), Double.Parse(mtlParts[3]), 1.0));
+                                        }
+                                        else if (mtlParts[0] == "Ks")
+                                        {
+                                            MaterialObject["specularColor"].Values[0] = (ColorRGB(Double.Parse(mtlParts[1]), Double.Parse(mtlParts[2]), Double.Parse(mtlParts[3])));
+                                        }
+                                        else if (mtlParts[0] == "Ke")
+                                        {
+                                            MaterialObject["emissiveColor"].Values[0] = (ColorRGB(Double.Parse(mtlParts[1]), Double.Parse(mtlParts[2]), Double.Parse(mtlParts[3])));
+                                        }
+                                        else if (mtlParts[0] == "Ns")
+                                        {
+                                            MaterialObject["power"].Values[0] = (Double.Parse(mtlParts[1]));
+                                        }
+                                        else if (mtlParts[0] == "Tr")
+                                        {
+                                            (MaterialObject["faceColor"].Values[0] as XObjectStructure)["alpha"].Values[0] = 1.0 - Double.Parse(mtlParts[1]);
+                                        }
+                                        else if (mtlParts[0] == "d")
+                                        {
+                                            (MaterialObject["faceColor"].Values[0] as XObjectStructure)["alpha"].Values[0] = Double.Parse(mtlParts[1]);
+                                        }
+                                        else if (mtlParts[0] == "map_Kd")
+                                        {
+                                            XObject texFilename = XReader.NativeTemplates["TextureFilename"].Instantiate();
+                                            string texname = mtlLine.Substring(7);
+                                            if (removeTextureExtension)
+                                                texname = System.IO.Path.GetFileNameWithoutExtension(texname);
+                                            texFilename["filename"].Values.Add(texname);
+                                            MaterialObject.Children.Add(new XChildObject(texFilename, false));
+                                        }
                                     }
-                                    else if (mtlParts[0] == "Kd")
-                                    {
-                                        MaterialObject["faceColor"].Values[0] = (ColorRGBA(Double.Parse(mtlParts[1]), Double.Parse(mtlParts[2]), Double.Parse(mtlParts[3]), 1.0));
-                                    }
-                                    else if (mtlParts[0] == "Ks")
-                                    {
-                                        MaterialObject["specularColor"].Values[0] = (ColorRGB(Double.Parse(mtlParts[1]), Double.Parse(mtlParts[2]), Double.Parse(mtlParts[3])));
-                                    }
-                                    else if (mtlParts[0] == "Ke")
-                                    {
-                                        MaterialObject["emissiveColor"].Values[0] = (ColorRGB(Double.Parse(mtlParts[1]), Double.Parse(mtlParts[2]), Double.Parse(mtlParts[3])));
-                                    }
-                                    else if (mtlParts[0] == "Ns")
-                                    {
-                                        MaterialObject["power"].Values[0] = (Double.Parse(mtlParts[1]));
-                                    }
-                                    else if (mtlParts[0] == "Tr")
-                                    {
-                                        (MaterialObject["faceColor"].Values[0] as XObjectStructure)["alpha"].Values[0] = 1.0 - Double.Parse(mtlParts[1]);
-                                    }
-                                    else if (mtlParts[0] == "d")
-                                    {
-                                        (MaterialObject["faceColor"].Values[0] as XObjectStructure)["alpha"].Values[0] = Double.Parse(mtlParts[1]);
-                                    }
-                                    else if (mtlParts[0] == "map_Kd")
-                                    {
-                                        XObject texFilename = XReader.NativeTemplates["TextureFilename"].Instantiate();
-                                        string texname = mtlLine.Substring(7);
-                                        if (removeTextureExtension)
-                                            texname = System.IO.Path.GetFileNameWithoutExtension(texname);
-                                        texFilename["filename"].Values.Add(texname);
-                                        MaterialObject.Children.Add(new XChildObject(texFilename, false));
-                                    }
-                                }
 
-                                if (MaterialObject != null)
-                                    MeshMaterialListObject.Children.Add(new XChildObject(MaterialObject, false));
+                                    if (MaterialObject != null)
+                                        MeshMaterialListObject.Children.Add(new XChildObject(MaterialObject, false));
+                                }
                             }
                         }
                         else
