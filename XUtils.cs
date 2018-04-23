@@ -40,7 +40,7 @@ namespace D3DX
                     // Write materials
                     for (int i = 0; i < (int)meshMaterialList["nMaterials"].Values[0]; i++)
                     {
-                        matWriter.WriteLine("newmtl Material" + i.ToString().PadLeft(3, '0'));
+                        matWriter.WriteLine("newmtl Material_" + i.ToString().PadLeft(3, '0') + "_Mat");
                         XObject material = meshMaterialList[i].Object;
                         XObjectStructure faceColor = (XObjectStructure)material["faceColor"].Values[0];
                         float specExponent = (float)(double)material["power"].Values[0];
@@ -116,7 +116,7 @@ namespace D3DX
                         int newMaterialIndex = (int)meshMaterialList["faceIndexes"].Values[i];
                         if (newMaterialIndex != mtl)
                         {
-                            writer.WriteLine("usemtl Material" + newMaterialIndex.ToString().PadLeft(3, '0'));
+                            writer.WriteLine("usemtl Material_" + newMaterialIndex.ToString().PadLeft(3, '0') + "_Mat");
                             mtl = newMaterialIndex;
                         }
 
@@ -251,7 +251,11 @@ namespace D3DX
                                     if (mtlParts[0] == "newmtl")
                                     {
                                         if (MaterialObject != null)
+                                        {
                                             MeshMaterialListObject.Children.Add(new XChildObject(MaterialObject, false));
+                                            if (MaterialObject.Children.Count == 0)
+                                                Console.WriteLine("[WARNING: Material at index " + (MeshMaterialListObject.Children.Count - 1) + " doesn't have a texture filename!");
+                                        }
                                         MaterialObject = XReader.NativeTemplates["Material"].Instantiate();
                                         MaterialObject["faceColor"].Values.Add(ColorRGBA(1.0, 1.0, 1.0, 1.0));
                                         MaterialObject["specularColor"].Values.Add(ColorRGB(1.0, 1.0, 1.0));
