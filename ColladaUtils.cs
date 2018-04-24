@@ -378,59 +378,6 @@ namespace LOMNTool.Collada
 
             doc.Add(COLLADA);
             doc.Save(filename);
-
-            /*Document doc = new Document();
-            // Metadata
-            doc.Asset.AuthorTool = "LOMNTool v" + System.Reflection.Assembly.GetEntryAssembly().GetName().Version.ToString();
-            doc.Asset.Created = DateTime.Now;
-            doc.Asset.Modified = DateTime.Now;
-            doc.Asset.UnitName = "meter";
-            doc.Asset.UnitSizeInMeters = 1.0f;
-            doc.Asset.UpAxis = AssetInfo.CoordinateSystem.Y_UP;
-
-            // VisualScenes, Scenes
-            VisualScene scene = new VisualScene("lomntool-export", "LOMNTool Export");
-            doc.VisualScenes.VisualScenes.Add(scene.ID, scene);
-            doc.Scene = new Document.SceneContainer();
-            doc.Scene.Scenes.Add(scene);
-
-            // Meshes
-            foreach (XObject obj in file.Objects)
-            {
-                if (obj.DataType.ID == XToken.TokenID.NAME && obj.DataType.NameData == "Mesh")
-                {
-                    int vertexCount = (int)obj["nVertices"].Values[0];
-                    int faceCount = (int)obj["nFaces"].Values[0];
-
-                    List<float> posList = new List<float>();
-                    for (int i = 0; i < vertexCount; i++)
-                        posList.Add((float)Convert.ToDouble(obj["vertices"].Values[i]));
-                    FloatDataSource positions = new FloatDataSource("mesh_positions", "mesh_positions_array", posList,
-                        new DataAccessorParam("X", "float"),
-                        new DataAccessorParam("Y", "float"),
-                        new DataAccessorParam("Z", "float"));
-
-                    foreach (XChildObject child in obj.Children)
-                    {
-                        if (child.Object.DataType.NameData == "MeshNormals")
-                        {
-
-                        }
-                        else if (child.Object.DataType.NameData == "MeshTextureCoords")
-                        {
-
-                        }
-                        else if (child.Object.DataType.NameData == "MeshVertexColors")
-                        {
-
-                        }
-                    }
-
-                    Geometry geometry = new Geometry("mesh_geometry", "mesh_geometry", )
-                }
-            }
-
-            doc.BuildDocument().Save(filename);*/
         }
     }
 }
