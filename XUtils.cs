@@ -205,6 +205,7 @@ namespace D3DX
             {
                 XFile result = new XFile(new XHeader(3, 3, XHeader.HeaderFormat.Binary, 32));
                 bool hasColor = false;
+                bool hasMRGB = false;
 
                 result.Templates.Add(XReader.NativeTemplates["XSkinMeshHeader"]);
                 result.Templates.Add(XReader.NativeTemplates["VertexDuplicationIndices"]);
@@ -243,6 +244,32 @@ namespace D3DX
                         string line = reader.ReadLine().Trim();
                         if (String.IsNullOrEmpty(line))
                             continue;
+
+                        if (line.StartsWith("#"))
+                        {
+                            if (line.StartsWith("#MRGB"))
+                            {
+                                if (!hasMRGB)
+                                {
+                                    MeshObject.Children.Add(new XChildObject(MeshVertexColorsObject, false));
+                                    hasMRGB = true;
+                                }
+                                // Read ZBrush Polypaint-style vertex colors
+                                line = line.Substring(6); // Trim off leading '#MRGB '
+                                for (int i = 0; i < line.Length / 8; i++)
+                                {
+                                    float mask = Int32.Parse(line.Substring(i * 8, 2), System.Globalization.NumberStyles.AllowHexSpecifier) / 255.0f;
+                                    float red = Int32.Parse(line.Substring(i * 8 + 2, 2), System.Globalization.NumberStyles.AllowHexSpecifier) / 255.0f;
+                                    float green = Int32.Parse(line.Substring(i * 8 + 4, 2), System.Globalization.NumberStyles.AllowHexSpecifier) / 255.0f;
+                                    float blue = Int32.Parse(line.Substring(i * 8 + 6, 2), System.Globalization.NumberStyles.AllowHexSpecifier) / 255.0f;
+                                    colors.Add(new Vector4(red, green, blue, mask)); // Treat 'mask' like alpha
+                                }
+                            }
+                            else
+                            {
+                                continue;
+                            }
+                        }
 
                         string[] parts = line.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
                         
@@ -441,7 +468,16 @@ namespace D3DX
                             throw new Exception("ImportOBJ: Vertex color was not specified for position index " + i + "!");
                     }
 
-                    inputs.Add(new Tuple<Vector3, Vector4>(positions[i], hasColor ? colors[positionColors[i]] : Vector4.Zero));
+                    Vector4 color = Vector4.Zero;
+                    if (hasColor)
+                    {
+                        color = colors[positionColors[i]];
+                    }
+                    else if (hasMRGB)
+                    {
+                        color = colors[i];
+                    }
+                    inputs.Add(new Tuple<Vector3, Vector4>(positions[i], color));
                 }
                 List<Tuple<Vector3, Vector4, Vector2>> newPositionUVs = WeldTextureCoordinates(inputs, uvs, faces, out newFaces);
                 int vertex = 0;
@@ -449,7 +485,7 @@ namespace D3DX
                 {
                     MeshObject["vertices"].Values.Add(Vector(vdata.Item1));
                     MeshTextureCoordsObject["textureCoords"].Values.Add(TexCoord(vdata.Item3));
-                    if (hasColor)
+                    if (hasColor || hasMRGB)
                     {
                         Vector4 color = vdata.Item2;
                         XObjectStructure indexColor = new XObjectStructure(XReader.NativeTemplates["IndexedColor"],
