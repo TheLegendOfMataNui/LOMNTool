@@ -377,7 +377,7 @@ namespace D3DX
                                             {
                                                 MeshMaterialListObject.Children.Add(new XChildObject(MaterialObject, false));
                                                 if (MaterialObject.Children.Count == 0)
-                                                    Console.WriteLine("[WARNING: Material at index " + (MeshMaterialListObject.Children.Count - 1) + " doesn't have a texture filename!");
+                                                    Console.WriteLine("[WARNING]: Material at index " + (MeshMaterialListObject.Children.Count - 1) + " doesn't have a texture filename!");
                                             }
                                             MaterialObject = XReader.NativeTemplates["Material"].Instantiate();
                                             MaterialObject["faceColor"].Values.Add(ColorRGBA(1.0, 1.0, 1.0, 1.0));
@@ -487,11 +487,7 @@ namespace D3DX
                     MeshTextureCoordsObject["textureCoords"].Values.Add(TexCoord(vdata.Item3));
                     if (hasColor || hasMRGB)
                     {
-                        Vector4 color = vdata.Item2;
-                        XObjectStructure indexColor = new XObjectStructure(XReader.NativeTemplates["IndexedColor"],
-                            new XObjectMember("index", new XToken(XToken.TokenID.DWORD), vertex),
-                            new XObjectMember("indexColor", new XToken(XToken.TokenID.NAME) { NameData = "ColorRGBA" }, ColorRGBA(color.X, color.Y, color.Z, color.W)));
-                        MeshVertexColorsObject["vertexColors"].Values.Add(indexColor);
+                        MeshVertexColorsObject["vertexColors"].Values.Add(IndexedColor(vertex, vdata.Item2));
                     }
                     vertex++;
                 }
@@ -574,6 +570,13 @@ namespace D3DX
             public static Vector3 ColorRGB(XObjectStructure color)
             {
                 return new Vector3(Convert.ToSingle(color["red"].Values[0]), Convert.ToSingle(color["green"].Values[0]), Convert.ToSingle(color["blue"].Values[0]));
+            }
+
+            public static XObjectStructure IndexedColor(int index, Vector4 color)
+            {
+                return new XObjectStructure(XReader.NativeTemplates["IndexedColor"],
+                    new XObjectMember("index", new XToken(XToken.TokenID.DWORD), index),
+                    new XObjectMember("indexColor", new XToken(XToken.TokenID.NAME) { NameData = "ColorRGBA" }, ColorRGBA(color.X, color.Y, color.Z, color.W)));
             }
 
             // This might be the ugliest C# code I've ever written. Just look at that signature! Ugh!

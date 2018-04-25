@@ -10,7 +10,7 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"C:\Program Files (x86)\LEGO Media\LEGO Bionicle\data\levels\lev2\vllg\main.x";
+        public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\COLLADA Test\conversion\MainCopyPainted.dae";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\main.bcl.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main Omega.bcl.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Watr2.bcl.obj";
@@ -82,6 +82,10 @@ namespace LOMNTool
                 else if (extension == ".ocl")
                 {
                     OCLFile(arg);
+                }
+                else if (extension == ".dae")
+                {
+                    DAEFile(arg);
                 }
                 else
                 {
@@ -181,6 +185,17 @@ namespace LOMNTool
             BCLFile file = LOMNTool.BCLFile.ImportOBJ(arg);
 
             using (FileStream stream = new FileStream(arg.Substring(0, arg.Length - 8) + ".bcl", FileMode.Create, FileAccess.Write, FileShare.Read))
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                file.Write(writer);
+            }
+        }
+
+        public static void DAEFile(string arg)
+        {
+            XFile file = Collada.Utils.ImportCOLLADA(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), true, true);
+
+            using (FileStream stream = new FileStream(Path.ChangeExtension(arg, ".x"), FileMode.Create, FileAccess.Write, FileShare.Read))
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 file.Write(writer);

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using System.Xml.XPath;
 using D3DX.Mesh;
 using SharpDX;
 
@@ -12,6 +13,386 @@ namespace LOMNTool.Collada
     public static class Utils
     {
         private const string SCHEMA_URL = "http://www.collada.org/2005/11/COLLADASchema";
+
+        private static XElement FindElementByReference(XElement library, XName type, string reference)
+        {
+            if (reference.StartsWith("#"))
+            {
+                reference = reference.Substring(1); // Remove the #
+                IEnumerable<XElement> results = from ele in library.Elements(type) where ele.Attribute("id").Value == reference select ele;
+
+                // Return the first result
+                foreach (XElement ele in results)
+                    return ele;
+
+                return null;
+            }
+            else
+            {
+                throw new FormatException("Only ID references (starting with #) are supported.");
+            }
+        }
+
+        private static float ParseFloat(string input)
+        {
+            return Single.Parse(input, System.Globalization.CultureInfo.InvariantCulture.NumberFormat); // Don't go off about commas being the decimal point.
+        }
+
+        private static Vector4 ParseVector4(XElement element)
+        {
+            string[] parts = element.Value.Split(new char[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            return new Vector4(ParseFloat(parts[0]), ParseFloat(parts[1]), ParseFloat(parts[2]), ParseFloat(parts[3]));
+        }
+
+        private static Matrix ReadMatrix(XElement matrix)
+        {
+            if (matrix.Name != ((XNamespace)SCHEMA_URL) + "matrix")
+                throw new ArgumentException("`matrix` must be an element of type `matrix`.");
+
+            string[] parts = matrix.Value.Split(' ');
+
+            if (parts.Length != 16)
+                throw new ArgumentException("There must be exactly 16 elements in this matrix. Instead, there are " + parts.Length + ".");
+
+            float[] values = new float[parts.Length];
+            for (int i = 0; i < parts.Length; i++)
+                values[i] = ParseFloat(parts[i]);
+
+            return new Matrix(values);
+        }
+
+        public static XFile ImportCOLLADA(string filename, Matrix transform, bool flipV = true, bool stripExtensions = true)
+        {
+            XFile result = new XFile(new XHeader());
+
+            // These templates are present in all LOMN .X files, so add them just in case.
+            result.Templates.Add(XReader.NativeTemplates["XSkinMeshHeader"]);
+            result.Templates.Add(XReader.NativeTemplates["VertexDuplicationIndices"]);
+            result.Templates.Add(XReader.NativeTemplates["SkinWeights"]);
+
+            D3DX.Mesh.XObject frameObject = new D3DX.Mesh.XObject(new XToken(XToken.TokenID.NAME) { NameData = "Frame" }, "Root");
+            D3DX.Mesh.XObject frameTransformObject = new D3DX.Mesh.XObject(new XToken(XToken.TokenID.NAME) { NameData = "FrameTransformMatrix" });
+            frameTransformObject.Members.Add(new XObjectMember("frameMatrix", new XToken(XToken.TokenID.NAME) { NameData = "Matrix4x4" }, new XObjectStructure(XReader.NativeTemplates["Matrix4x4"], new XObjectMember("matrix", new XToken(XToken.TokenID.FLOAT), 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0))));
+            frameObject.Children.Add(new XChildObject(frameTransformObject, false));
+
+            XDocument doc = XDocument.Load(filename);
+            XNamespace ns = SCHEMA_URL;
+
+            XElement COLLADA = doc.Root;
+            XElement imagesLibrary = COLLADA.Element(ns + "library_images");
+            XElement materialsLibrary = COLLADA.Element(ns + "library_materials");
+            XElement effectsLibrary = COLLADA.Element(ns + "library_effects");
+            XElement geometryLibrary = COLLADA.Element(ns + "library_geometries");
+            XElement visualSceneLibrary = COLLADA.Element(ns + "library_visual_scenes");
+
+            XElement sceneElement = COLLADA.Element(ns + "scene");
+            XElement visualSceneInstance = sceneElement.Element(ns + "instance_visual_scene");
+            XElement visualScene = FindElementByReference(visualSceneLibrary, ns + "visual_scene", visualSceneInstance.Attribute("url").Value);
+
+            // Read all the textures
+            Dictionary<string, string> textureFilenames = new Dictionary<string, string>();
+            foreach (XElement imageElement in imagesLibrary.Elements(ns + "image"))
+            {
+                string path = imageElement.Element(ns + "init_from").Value;
+                if (stripExtensions)
+                    path = System.IO.Path.GetFileNameWithoutExtension(path);
+                else
+                    path = System.IO.Path.GetFileName(path);
+                textureFilenames.Add(imageElement.Attribute("id").Value, path);
+            }
+
+            // Read all the materials
+            Dictionary<string, D3DX.Mesh.XObject> materials = new Dictionary<string, D3DX.Mesh.XObject>();
+            foreach (XElement materialElement in materialsLibrary.Elements(ns + "material"))
+            {
+                string id = materialElement.Attribute("id").Value;
+                string name = materialElement.Attribute("name").Value;
+
+                XElement effectInstanceElement = materialElement.Element(ns + "instance_effect");
+                string effectReference = effectInstanceElement.Attribute("url").Value;
+                XElement effectElement = FindElementByReference(effectsLibrary, ns + "effect", effectReference);
+
+                XElement shaderElement = effectElement.Element(ns + "profile_COMMON").Element(ns + "technique").Element(ns + "phong");
+                if (shaderElement == null)
+                {
+                    Console.WriteLine("[WARNING]: Material '" + id + "' isn't a phong! Skipping.");
+                    continue;
+                }
+
+                D3DX.Mesh.XObject material = XReader.NativeTemplates["Material"].Instantiate(name);
+
+                XElement diffuseElement = shaderElement.Element(ns + "diffuse");
+                XElement diffuseTextureElement = diffuseElement.Element(ns + "texture");
+                if (diffuseTextureElement != null)
+                {
+                    material["faceColor"].Values.Add(XUtils.ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
+                    D3DX.Mesh.XObject textureFilename = XReader.NativeTemplates["TextureFilename"].Instantiate();
+                    textureFilename["filename"].Values.Add(textureFilenames[diffuseTextureElement.Attribute("texture").Value]);
+                    material.Children.Add(new XChildObject(textureFilename, false));
+                }
+                else
+                {
+                    XElement diffuseColorElement = diffuseElement.Element(ns + "color");
+                    Vector4 color = ParseVector4(diffuseColorElement);
+                    material["faceColor"].Values.Add(XUtils.ColorRGBA(color.X, color.Y, color.Z, color.W));
+                }
+                material["power"].Values.Add(ParseFloat(shaderElement.Element(ns + "shininess").Element(ns + "float").Value));
+                Vector4 specColor = ParseVector4(shaderElement.Element(ns + "specular").Element(ns + "color"));
+                material["specularColor"].Values.Add(XUtils.ColorRGB(specColor.X * specColor.W, specColor.Y * specColor.W, specColor.Z * specColor.W));
+                Vector4 emColor = ParseVector4(shaderElement.Element(ns + "emission").Element(ns + "color"));
+                material["emissiveColor"].Values.Add(XUtils.ColorRGB(emColor.X * emColor.W, emColor.Y * emColor.W, emColor.Z * emColor.W));
+                materials.Add("#" + id, material);
+            }
+
+            // Read all the meshes
+            foreach (XElement node in visualScene.Elements(ns + "node"))
+            {
+                Matrix matrix = Matrix.Identity;
+                XElement matrixElement = node.Element(ns + "matrix");
+                if (matrixElement != null)
+                {
+                    matrix = ReadMatrix(matrixElement);
+                }
+                Matrix totalTransform = matrix * transform;
+
+                XElement geoInstanceElement = node.Element(ns + "instance_geometry");
+                if (geoInstanceElement != null)
+                {
+                    D3DX.Mesh.XObject mesh = XReader.NativeTemplates["Mesh"].Instantiate(node.Attribute("name").Value);
+                    D3DX.Mesh.XObject meshNormals = XReader.NativeTemplates["MeshNormals"].Instantiate();
+                    mesh.Children.Add(new XChildObject(meshNormals, false));
+                    D3DX.Mesh.XObject meshTextureCoords = XReader.NativeTemplates["MeshTextureCoords"].Instantiate();
+                    mesh.Children.Add(new XChildObject(meshTextureCoords, false));
+                    D3DX.Mesh.XObject meshVertexColors = XReader.NativeTemplates["MeshVertexColors"].Instantiate();
+                    D3DX.Mesh.XObject meshMaterialList = XReader.NativeTemplates["MeshMaterialList"].Instantiate();
+                    mesh.Children.Add(new XChildObject(meshMaterialList, false));
+
+                    // Material Binding - relates material names (the key) to material URIs (the value)
+                    Dictionary<string, string> materialBinds = null;
+                    XElement materialBinding = geoInstanceElement.Element(ns + "bind_material");
+                    if (materialBinding != null)
+                    {
+                        materialBinds = new Dictionary<string, string>();
+                        foreach (XElement bind in materialBinding.Element(ns + "technique_common").Elements(ns + "instance_material"))
+                        {
+                            materialBinds.Add(bind.Attribute("symbol").Value, bind.Attribute("target").Value);
+                        }
+                    }
+                    Dictionary<string, int> includedMaterials = new Dictionary<string, int>();
+
+                    XElement geometryElement = FindElementByReference(geometryLibrary, ns + "geometry", geoInstanceElement.Attribute("url").Value);
+                    XElement meshElement = geometryElement.Element(ns + "mesh");
+
+                    // .X meshes treat position, uv, and color as one welded item, meaning we need to store unique combinations (permutations, i suppose).
+                    /*List<Vector3> positions = new List<Vector3>();*/
+                    List<Vector3> normals = new List<Vector3>();
+                    /*List<Vector2> uvs = new List<Vector2>();
+                    List<Vector4> colors = new List<Vector4>();*/
+                    List<Tuple<Vector3, Vector2, Vector4>> vertices = new List<Tuple<Vector3, Vector2, Vector4>>();
+
+                    bool hasColors = false;
+
+                    foreach (XElement trianglesElement in meshElement.Elements(ns + "triangles"))
+                    {
+                        int triangleCount = Int32.Parse(trianglesElement.Attribute("count").Value);
+                        string materialName = trianglesElement.Attribute("material").Value;
+
+                        // Map the material name
+                        if (materialBinds.ContainsKey(materialName))
+                            materialName = materialBinds[materialName];
+                        else
+                            throw new Exception("[ERROR]: Material '" + materialName + "' wasn't bound!");
+
+                        int materialIndex = -1;
+                        if (includedMaterials.ContainsKey(materialName))
+                        {
+                            materialIndex = includedMaterials[materialName];
+                        }
+                        else
+                        {
+                            materialIndex = includedMaterials.Count;
+                            includedMaterials.Add(materialName, materialIndex);
+                            meshMaterialList.Children.Add(new XChildObject(materials[materialName], false));
+                        }
+
+                        string[] indexData = trianglesElement.Element(ns + "p").Value.Split(new char[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                        int[] indices = new int[indexData.Length];
+                        for (int i = 0; i < indexData.Length; i++)
+                            indices[i] = Int32.Parse(indexData[i]);
+
+                        int posOffset = -1;
+                        string[] posData = null;
+                        int normalOffset = -1;
+                        string[] normalData = null;
+                        int uvOffset = -1;
+                        string[] uvData = null;
+                        int colorOffset = -1;
+                        string[] colorData = null;
+
+                        int stride = indices.Length / (triangleCount * 3); // Because counting the number of inputs is too much work
+
+                        foreach (XElement inputElement in trianglesElement.Elements(ns + "input"))
+                        {
+                            string semantic = inputElement.Attribute("semantic").Value.ToUpper();
+                            int offset = Int32.Parse(inputElement.Attribute("offset").Value);
+                            string sourceReference = inputElement.Attribute("source").Value;
+
+                            if (semantic == "VERTEX")
+                            {
+                                // Redirect sourceReference to the POSITION source.
+                                XElement verticesElement = FindElementByReference(meshElement, ns + "vertices", sourceReference);
+                                sourceReference = verticesElement.Element(ns + "input").Attribute("source").Value;
+                            }
+
+                            XElement dataElement = FindElementByReference(meshElement, ns + "source", sourceReference).Element(ns + "float_array");
+                            string[] data = dataElement.Value.Split(new char[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+                            if (semantic == "VERTEX")
+                            {
+                                posData = data;
+                                posOffset = offset;
+                            }
+                            else if (semantic == "NORMAL")
+                            {
+                                normalData = data;
+                                normalOffset = offset;
+                            }
+                            else if (semantic == "TEXCOORD")
+                            {
+                                uvData = data;
+                                uvOffset = offset;
+                            }
+                            else if (semantic == "COLOR")
+                            {
+                                colorData = data;
+                                colorOffset = offset;
+                            }
+                            else
+                            {
+                                Console.WriteLine("[WARNING]: Unknown COLLADA triangles input semantic '" + semantic + "'!");
+                            }
+                        }
+
+                        for (int i = 0; i < triangleCount; i++)
+                        {
+                            List<int> vertexIndices = new List<int>();
+                            List<int> normalIndices = new List<int>();
+
+                            for (int v = 0; v < 3; v++)
+                            {
+                                int pIndex = i * 3 * stride + v * stride;
+
+                                int posIndex = indices[pIndex + posOffset];
+                                float posX = ParseFloat(posData[posIndex * 3]);
+                                float posY = ParseFloat(posData[posIndex * 3 + 1]);
+                                float posZ = ParseFloat(posData[posIndex * 3 + 2]);
+
+                                if (normalData == null)
+                                    throw new FormatException("[ERROR]: No normal data!");
+                                int normalIndex = indices[pIndex + normalOffset];
+                                float normX = ParseFloat(normalData[normalIndex * 3]);
+                                float normY = ParseFloat(normalData[normalIndex * 3 + 1]);
+                                float normZ = ParseFloat(normalData[normalIndex * 3 + 2]);
+
+                                if (uvData == null)
+                                    throw new FormatException("[ERROR]: No texture coordinates!");
+                                int uvIndex = indices[pIndex + uvOffset];
+                                float uvX = ParseFloat(uvData[uvIndex * 2]);
+                                float uvY = ParseFloat(uvData[uvIndex * 2 + 1]);
+                                if (flipV)
+                                    uvY = 1.0f - uvY;
+
+                                float colorR = 0.0f;
+                                float colorG = 0.0f;
+                                float colorB = 0.0f;
+                                float colorA = 0.0f;
+
+                                if (colorData != null)
+                                {
+                                    hasColors = true;
+                                    int colorIndex = indices[pIndex + colorOffset];
+                                    colorR = ParseFloat(colorData[colorIndex * 4]);
+                                    colorG = ParseFloat(colorData[colorIndex * 4 + 1]);
+                                    colorB = ParseFloat(colorData[colorIndex * 4 + 2]);
+                                    colorA = ParseFloat(colorData[colorIndex * 4 + 3]);
+                                }
+                                else if (hasColors)
+                                {
+                                    throw new FormatException("Part of the mesh has vertex colors, but this part doesn't!");
+                                }
+
+                                // Now lookup the indices
+                                Vector4 normal = new Vector4(normX, normY, normZ, 0);
+                                normal = Vector4.Transform(normal, totalTransform);
+                                Vector4 transPos = Vector4.Transform(new Vector4(posX, posY, posZ, 1.0f), totalTransform);
+                                Tuple<Vector3, Vector2, Vector4> vertex = new Tuple<Vector3, Vector2, Vector4>(new Vector3(transPos.X, transPos.Y, transPos.Z), new Vector2(uvX, uvY), new Vector4(colorR, colorG, colorB, colorA));
+
+                                int normIndex = normals.IndexOf(new Vector3(normal.X, normal.Y, normal.Z));
+                                if (normIndex > -1)
+                                {
+                                    normalIndices.Add(normIndex);
+                                }
+                                else
+                                {
+                                    normals.Add(new Vector3(normal.X, normal.Y, normal.Z));
+                                    normalIndices.Add(normals.Count - 1);
+                                }
+
+                                int vertexIndex = vertices.IndexOf(vertex);
+                                if (vertexIndex > -1)
+                                {
+                                    vertexIndices.Add(vertexIndex);
+                                }
+                                else
+                                {
+                                    vertices.Add(vertex);
+                                    vertexIndices.Add(vertices.Count - 1);
+                                }
+                            }
+
+                            mesh["faces"].Values.Add(XUtils.Face(vertexIndices));
+                            meshNormals["faceNormals"].Values.Add(XUtils.Face(normalIndices));
+                            meshMaterialList["faceIndexes"].Values.Add(materialIndex);
+                        }
+                    }
+
+                    int vIndex = 0;
+                    foreach (Tuple<Vector3, Vector2, Vector4> vertex in vertices)
+                    {
+                        mesh["vertices"].Values.Add(XUtils.Vector(vertex.Item1));
+                        meshTextureCoords["textureCoords"].Values.Add(XUtils.TexCoord(vertex.Item2));
+                        meshVertexColors["vertexColors"].Values.Add(XUtils.IndexedColor(vIndex, vertex.Item3));
+                        vIndex++;
+                    }
+
+                    foreach (Vector3 normal in normals)
+                    {
+                        meshNormals["normals"].Values.Add(XUtils.Vector(normal));
+                    }
+
+                    if (hasColors)
+                    {
+                        mesh.Children.Add(new XChildObject(meshVertexColors, false));
+                    }
+
+                    // Fix all the counts.
+                    mesh["nVertices"].Values.Add(mesh["vertices"].Values.Count);
+                    mesh["nFaces"].Values.Add(mesh["faces"].Values.Count);
+                    meshNormals["nNormals"].Values.Add(meshNormals["normals"].Values.Count);
+                    meshNormals["nFaceNormals"].Values.Add(meshNormals["faceNormals"].Values.Count);
+                    meshTextureCoords["nTextureCoords"].Values.Add(meshTextureCoords["textureCoords"].Values.Count);
+                    meshVertexColors["nVertexColors"].Values.Add(meshVertexColors["vertexColors"].Values.Count);
+                    meshMaterialList["nMaterials"].Values.Add(meshMaterialList.Children.Count); // Because MeshMaterialList is a restricted template, all children are guaranteed to be Material objects.
+                    meshMaterialList["nFaceIndexes"].Values.Add(meshMaterialList["faceIndexes"].Values.Count);
+
+                    frameObject.Children.Add(new XChildObject(mesh, false));
+                }
+            }
+
+            result.Objects.Add(frameObject);
+
+            return result;
+        }
 
         public static void ExportCOLLADA(XFile file, string filename, Matrix transform, bool flipV = true, string textureExtension = null)
         {
