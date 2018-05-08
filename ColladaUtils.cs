@@ -415,6 +415,7 @@ namespace LOMNTool.Collada
             XElement library_materials = new XElement(ns + "library_materials");
             XElement library_effects = new XElement(ns + "library_effects");
             XElement library_geometries = new XElement(ns + "library_geometries");
+            XElement library_controllers = new XElement(ns + "library_controllers");
             XElement visual_scene = new XElement(ns + "visual_scene", new XAttribute("id", "Scene"), new XAttribute("name", "Scene"));
 
             int meshID = 1;
@@ -438,6 +439,8 @@ namespace LOMNTool.Collada
                         XElement mesh = new XElement(ns + "mesh");
                         XElement bindMaterialCommon = new XElement(ns + "technique_common");
                         geometry.Add(mesh);
+
+                        XElement controller = null;
 
                         int materialCount = -1;
                         // Maps material indices to face indices
@@ -640,6 +643,14 @@ namespace LOMNTool.Collada
                                                     new XElement(ns + "transparency",
                                                         new XElement(ns + "float", new XAttribute("sid", "transparency"), faceColor.W.ToString())))))));
                                 }
+                            }
+                            else if (child.Object.DataType.NameData == "XSkinMeshHeader")
+                            {
+
+                            }
+                            else if (child.Object.DataType.NameData == "SkinWeights")
+                            {
+
                             }
                         }
 
