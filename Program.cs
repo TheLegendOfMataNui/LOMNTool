@@ -114,8 +114,9 @@ namespace LOMNTool
                 string modelFormat = Config.GetValueOrDefault("Models", "Format", "DAE");
                 if (modelFormat == "OBJ")
                 {
+                    bool splitMaterials = Config.GetValueOrDefault("OBJ", "SplitByMaterial", "False").ToLower() == "true";
                     Console.WriteLine("    Writing OBJ file...");
-                    XUtils.ExportOBJ(file.Objects[0][1].Object, Path.ChangeExtension(arg, ".obj"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds");
+                    XUtils.ExportOBJ(file.Objects[0][1].Object, Path.ChangeExtension(arg, ".obj"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds", splitMaterials);
                 }
                 else if (modelFormat == "DAE")
                 {

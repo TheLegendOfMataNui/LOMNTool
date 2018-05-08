@@ -11,7 +11,7 @@ namespace D3DX
     {
         public static class XUtils
         {
-            public static void ExportOBJ(XObject mesh, string filename, Matrix transform, bool flipV = true, string textureExtension = null)
+            public static void ExportOBJ(XObject mesh, string filename, Matrix transform, bool flipV = true, string textureExtension = null, bool splitMaterials = false)
             {
                 if (mesh.DataType.NameData != "Mesh")
                     throw new ArgumentException("'mesh' must be a Mesh object!");
@@ -184,6 +184,8 @@ namespace D3DX
                         int newMaterialIndex = (int)meshMaterialList["faceIndexes"].Values[i];
                         if (newMaterialIndex != mtl)
                         {
+                            if (splitMaterials)
+                                writer.WriteLine("g Material_" + newMaterialIndex.ToString().PadLeft(3, '0'));
                             writer.WriteLine("usemtl Material_" + newMaterialIndex.ToString().PadLeft(3, '0') + "_Mat");
                             mtl = newMaterialIndex;
                         }
