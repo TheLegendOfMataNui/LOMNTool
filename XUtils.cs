@@ -315,10 +315,17 @@ namespace D3DX
                                 string[] components = parts[i].Split('/');
                                 int pindex = Int32.Parse(components[0]) - 1;
                                 int uvindex = -1;
+
                                 if (components.Length > 1 && components[1].Length > 0)
                                     uvindex = Int32.Parse(components[1]) - 1;
+                                else
+                                    Console.WriteLine("[WARNING]: No UVs! Please add some.");
+
                                 if (components.Length > 2 && components[2].Length > 0)
                                     normIndices.Add(Int32.Parse(components[2]) - 1);
+                                else
+                                    Console.WriteLine("[WARNING]: No normals! Please add some.");
+
                                 if (components.Length > 3 && components[3].Length > 0)
                                 {
                                     // Set / overwrite color for position pindex.
