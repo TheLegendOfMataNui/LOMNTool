@@ -159,7 +159,7 @@ namespace D3DX
                                     writer.Write(((byte)(colors[i].Y * colors[i].W * 255)).ToString("X2"));
                                     writer.Write(((byte)(colors[i].Z * colors[i].W * 255)).ToString("X2"));
 
-                                    if (i % 64 == 0 && i > 0)
+                                    if (i % 64 == 0 && i > 0 && i < colors.Length - 1)
                                     {
                                         writer.Write("\n#MRGB ");
                                     }
