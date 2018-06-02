@@ -121,7 +121,8 @@ namespace LOMNTool
                 else if (modelFormat == "DAE")
                 {
                     Console.WriteLine("    Writing DAE file...");
-                    Collada.Utils.ExportCOLLADA(file, Path.ChangeExtension(arg, ".dae"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds");
+                    bool stripUnusedMaterials = Config.GetValueOrDefault("DAE", "StripUnusedMaterials", "False").ToLower() == "true";
+                    Collada.Utils.ExportCOLLADA(file, Path.ChangeExtension(arg, ".dae"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds", stripUnusedMaterials);
                 }
                 else if (modelFormat == "TXT")
                 {

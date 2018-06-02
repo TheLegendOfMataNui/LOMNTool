@@ -394,7 +394,7 @@ namespace LOMNTool.Collada
             return result;
         }
 
-        public static void ExportCOLLADA(XFile file, string filename, Matrix transform, bool flipV = true, string textureExtension = null)
+        public static void ExportCOLLADA(XFile file, string filename, Matrix transform, bool flipV = true, string textureExtension = null, bool stripUnusedMaterials = false)
         {
             XNamespace ns = SCHEMA_URL;
             XDocument doc = new XDocument();
@@ -417,6 +417,8 @@ namespace LOMNTool.Collada
             XElement library_geometries = new XElement(ns + "library_geometries");
             XElement library_controllers = new XElement(ns + "library_controllers");
             XElement visual_scene = new XElement(ns + "visual_scene", new XAttribute("id", "Scene"), new XAttribute("name", "Scene"));
+
+            List<int> usedMaterials = new List<int>();
 
             int meshID = 1;
             foreach (D3DX.Mesh.XObject frame in file.Objects)
@@ -574,74 +576,81 @@ namespace LOMNTool.Collada
                                 for (int i = 0; i < nFaceIndexes; i++)
                                 {
                                     int matIndex = (int)child.Object["faceIndexes"].Values[i];
+
+                                    if (!usedMaterials.Contains(matIndex))
+                                        usedMaterials.Add(matIndex);
+
                                     if (materialGroups.ContainsKey(matIndex))
                                         materialGroups[matIndex].Add(i);
                                     else
                                         materialGroups.Add(matIndex, new List<int>(new int[] { i }));
                                 }
 
+                                int materialIndex = 0;
                                 foreach (XChildObject material in child.Object.Children)
                                 {
-                                    Vector4 faceColor = XUtils.ColorRGBA((XObjectStructure)material.Object["faceColor"].Values[0]);
-                                    double power = Convert.ToDouble(material.Object["power"].Values[0]);
-                                    Vector3 specularColor = XUtils.ColorRGB((XObjectStructure)material.Object["specularColor"].Values[0]);
-                                    Vector3 emissiveColor = XUtils.ColorRGB((XObjectStructure)material.Object["emissiveColor"].Values[0]);
-
-                                    int materialIndex = library_materials.Elements().Count();
-
-                                    // Material
-                                    library_materials.Add(new XElement(ns + "material", new XAttribute("id", "Material" + materialIndex), new XAttribute("name", "Material" + materialIndex),
-                                        new XElement(ns + "instance_effect", new XAttribute("url", "#Material" + materialIndex + "-EFFECT"))));
-
-                                    // Bindings in Geometry Instance
-                                    bindMaterialCommon.Add(new XElement(ns + "instance_material", new XAttribute("symbol", "Material" + materialIndex), new XAttribute("target", "#Material" + materialIndex)));
-
-                                    // Texture
-                                    bool hasTexture = false;
-                                    string textureID = "";
-                                    XElement textureReference = null;
-                                    foreach (XChildObject texChild in material.Object.Children)
+                                    if (usedMaterials.Contains(materialIndex) || !stripUnusedMaterials)
                                     {
-                                        if (texChild.Object.DataType.NameData == "TextureFilename")
+                                        Vector4 faceColor = XUtils.ColorRGBA((XObjectStructure)material.Object["faceColor"].Values[0]);
+                                        double power = Convert.ToDouble(material.Object["power"].Values[0]);
+                                        Vector3 specularColor = XUtils.ColorRGB((XObjectStructure)material.Object["specularColor"].Values[0]);
+                                        Vector3 emissiveColor = XUtils.ColorRGB((XObjectStructure)material.Object["emissiveColor"].Values[0]);
+
+                                        // Material
+                                        library_materials.Add(new XElement(ns + "material", new XAttribute("id", "Material" + materialIndex), new XAttribute("name", "Material" + materialIndex),
+                                            new XElement(ns + "instance_effect", new XAttribute("url", "#Material" + materialIndex + "-EFFECT"))));
+
+                                        // Bindings in Geometry Instance
+                                        bindMaterialCommon.Add(new XElement(ns + "instance_material", new XAttribute("symbol", "Material" + materialIndex), new XAttribute("target", "#Material" + materialIndex)));
+
+                                        // Texture
+                                        bool hasTexture = false;
+                                        string textureID = "";
+                                        XElement textureReference = null;
+                                        foreach (XChildObject texChild in material.Object.Children)
                                         {
-                                            hasTexture = true;
-                                            textureID = "Texture" + library_images.Elements().Count();
-                                            string texFilename = (string)texChild.Object["filename"].Values[0];
-                                            if (textureExtension != null)
-                                                texFilename = System.IO.Path.ChangeExtension(texFilename, textureExtension);
+                                            if (texChild.Object.DataType.NameData == "TextureFilename")
+                                            {
+                                                hasTexture = true;
+                                                textureID = "Texture" + library_images.Elements().Count();
+                                                string texFilename = (string)texChild.Object["filename"].Values[0];
+                                                if (textureExtension != null)
+                                                    texFilename = System.IO.Path.ChangeExtension(texFilename, textureExtension);
 
-                                            library_images.Add(new XElement(ns + "image", new XAttribute("id", textureID), new XAttribute("name", textureID),
-                                                new XElement(ns + "init_from", "file://" + texFilename)));
+                                                library_images.Add(new XElement(ns + "image", new XAttribute("id", textureID), new XAttribute("name", textureID),
+                                                    new XElement(ns + "init_from", "file://" + texFilename)));
 
-                                            textureReference = new XElement(ns + "texture", new XAttribute("texture", textureID), new XAttribute("texcoord", "CHANNEL0")); // TODO: Add Maya-specific wrap info
+                                                textureReference = new XElement(ns + "texture", new XAttribute("texture", textureID), new XAttribute("texcoord", "CHANNEL0")); // TODO: Add Maya-specific wrap info
 
-                                            break; // There should only be one TextureFilename per Material.
+                                                break; // There should only be one TextureFilename per Material.
+                                            }
                                         }
-                                    }
 
-                                    // Effect
-                                    library_effects.Add(new XElement(ns + "effect", new XAttribute("id", "Material" + materialIndex + "-EFFECT"), new XAttribute("name", "Material" + materialIndex),
-                                        new XElement(ns + "profile_COMMON",
-                                            new XElement(ns + "technique", new XAttribute("sid", "standard"),
-                                                new XElement(ns + "phong",
-                                                    new XElement(ns + "emission",
-                                                        new XElement(ns + "color", new XAttribute("sid", "emission"), "0.0 0.0 0.0 1.0")),
-                                                    new XElement(ns + "ambient",
-                                                        new XElement(ns + "color", new XAttribute("sid", "ambient"), emissiveColor.X + " " + emissiveColor.Y + " " + emissiveColor.Z + " 1.000000")),
-                                                    new XElement(ns + "diffuse",
-                                                        hasTexture ? textureReference : new XElement(ns + "color", new XAttribute("sid", "diffuse"), faceColor.X + " " + faceColor.Y + " " + faceColor.Z + " 1.0")),
-                                                    new XElement(ns + "specular",
-                                                        new XElement(ns + "color", new XAttribute("sid", "specular"), power > 0.0 ? specularColor.X + " " + specularColor.Y + " " + specularColor.Z + " 1.0" : "0.0 0.0 0.0 1.0")),
-                                                    new XElement(ns + "shininess",
-                                                        new XElement(ns + "float", new XAttribute("sid", "shininess"), power.ToString())),
-                                                    new XElement(ns + "reflective",
-                                                        new XElement(ns + "color", new XAttribute("sid", "reflective"), "0.0 0.0 0.0 1.0")),
-                                                    new XElement(ns + "reflectivity",
-                                                        new XElement(ns + "float", new XAttribute("sid", "reflectivity"), "0.5")),
-                                                    new XElement(ns + "transparent", new XAttribute("opaque", "RGB_ZERO"),
-                                                        new XElement(ns + "color", new XAttribute("sid", "transparent"), "0.0 0.0 0.0 1.0")),
-                                                    new XElement(ns + "transparency",
-                                                        new XElement(ns + "float", new XAttribute("sid", "transparency"), faceColor.W.ToString())))))));
+                                        // Effect
+                                        library_effects.Add(new XElement(ns + "effect", new XAttribute("id", "Material" + materialIndex + "-EFFECT"), new XAttribute("name", "Material" + materialIndex),
+                                            new XElement(ns + "profile_COMMON",
+                                                new XElement(ns + "technique", new XAttribute("sid", "standard"),
+                                                    new XElement(ns + "phong",
+                                                        new XElement(ns + "emission",
+                                                            new XElement(ns + "color", new XAttribute("sid", "emission"), "0.0 0.0 0.0 1.0")),
+                                                        new XElement(ns + "ambient",
+                                                            new XElement(ns + "color", new XAttribute("sid", "ambient"), emissiveColor.X + " " + emissiveColor.Y + " " + emissiveColor.Z + " 1.000000")),
+                                                        new XElement(ns + "diffuse",
+                                                            hasTexture ? textureReference : new XElement(ns + "color", new XAttribute("sid", "diffuse"), faceColor.X + " " + faceColor.Y + " " + faceColor.Z + " 1.0")),
+                                                        new XElement(ns + "specular",
+                                                            new XElement(ns + "color", new XAttribute("sid", "specular"), power > 0.0 ? specularColor.X + " " + specularColor.Y + " " + specularColor.Z + " 1.0" : "0.0 0.0 0.0 1.0")),
+                                                        new XElement(ns + "shininess",
+                                                            new XElement(ns + "float", new XAttribute("sid", "shininess"), power.ToString())),
+                                                        new XElement(ns + "reflective",
+                                                            new XElement(ns + "color", new XAttribute("sid", "reflective"), "0.0 0.0 0.0 1.0")),
+                                                        new XElement(ns + "reflectivity",
+                                                            new XElement(ns + "float", new XAttribute("sid", "reflectivity"), "0.5")),
+                                                        new XElement(ns + "transparent", new XAttribute("opaque", "RGB_ZERO"),
+                                                            new XElement(ns + "color", new XAttribute("sid", "transparent"), "0.0 0.0 0.0 1.0")),
+                                                        new XElement(ns + "transparency",
+                                                            new XElement(ns + "float", new XAttribute("sid", "transparency"), faceColor.W.ToString())))))));
+                                    }
+                                    materialIndex++;
                                 }
                             }
                             else if (child.Object.DataType.NameData == "XSkinMeshHeader")
@@ -746,7 +755,6 @@ namespace LOMNTool.Collada
                             }
                         }
 
-                        //Geometry geometry = new Geometry("mesh_geometry", "mesh_geometry", )
                         library_geometries.Add(geometry);
 
                         visual_scene.Add(new XElement(ns + "node", new XAttribute("name", "Mesh" + meshID + "Instance"), new XAttribute("id", "Mesh" + meshID + "Instance"), new XAttribute("sid", "Mesh" + meshID + "Instance"),
