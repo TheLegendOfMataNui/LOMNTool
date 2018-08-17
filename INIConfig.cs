@@ -47,16 +47,18 @@ namespace LOMNTool
 
         public void SetTemporary(string section, string key, string value)
         {
-            if(TempSections.ContainsKey(section))
+            if (!TempSections.ContainsKey(section))
             {
-                Console.WriteLine(section + " already delcared");
-                return;
+                INISection tempSection = new INISection(section);
+
+                tempSection.Keys.Add(key, value);
+
+                TempSections.Add(section, tempSection);
             }
-            INISection tempSection = new INISection(section);
-
-            tempSection.Keys.Add(key,value);
-
-            TempSections.Add(section, tempSection);
+            else
+            {
+                TempSections[section].Keys.Add(key, value);
+            }
         }
 
         public string GetValueOrDefault(string section, string key, string defaultValue = null)
