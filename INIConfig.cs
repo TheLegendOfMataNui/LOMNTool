@@ -8,14 +8,18 @@ namespace LOMNTool
 {
     public class INIConfig
     {
-        public Dictionary<string, INISection> Sections = new Dictionary<string, INISection>(StringComparer.InvariantCultureIgnoreCase);
+        private Dictionary<string, INISection> Sections = new Dictionary<string, INISection>(StringComparer.InvariantCultureIgnoreCase);
+
+        public Dictionary<string, INISection> TempSections = new Dictionary<string, INISection>(StringComparer.InvariantCultureIgnoreCase);
 
         public INISection this[string sectionName]
         {
             get
             {
-                if (!Sections.ContainsKey(sectionName))
+                if (!TempSections.ContainsKey(sectionName) && !Sections.ContainsKey(sectionName))
                     Sections.Add(sectionName, new INISection(sectionName));
+                else if(TempSections.ContainsKey(sectionName))
+                    return TempSections[sectionName];
                 return Sections[sectionName];
             }
             set
@@ -41,12 +45,25 @@ namespace LOMNTool
             Read(filename, false);
         }
 
+        public void SetTemporary(string section, string key, string value)
+        {
+            INISection tempSection = new INISection(section);
+
+            tempSection.Keys.Add(key,value);
+
+            TempSections.Add(section, tempSection);
+        }
+
         public string GetValueOrDefault(string section, string key, string defaultValue = null)
         {
-            if (!Sections.ContainsKey(section))
+            //TODO: LOOK IN TEMP FIRST THEN THE REST.
+            if (!Sections.ContainsKey(section) && !TempSections.ContainsKey(section))
                 return defaultValue;
-
-            INISection s = Sections[section];
+            INISection s;
+            if (TempSections.ContainsKey(section))
+                s = TempSections[section];
+            else
+                s = Sections[section];
             if (!s.Keys.ContainsKey(key))
                 return defaultValue;
             else

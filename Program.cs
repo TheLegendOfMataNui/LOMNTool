@@ -11,6 +11,7 @@ namespace LOMNTool
     public class Program
     {
         public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\characters\onua\Xs\onua.x";
+        //public const string TestFile = @"D:\User Inforamtion\Desktop\B Data\Data\characters\onua\Xs\onua.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\main.bcl.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main Omega.bcl.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Watr2.bcl.obj";
@@ -60,6 +61,13 @@ namespace LOMNTool
 #endif
             foreach (string arg in args)
             {
+                if(arg.StartsWith("-"))
+                {
+                    Console.WriteLine("Parsing Command Line Argument " + arg);
+                    string[] parts = arg.Substring(arg.IndexOf(']')+1).Split('=');
+                    Config.SetTemporary(arg.Substring(arg.IndexOf('[') + 1, arg.IndexOf(']') - 2), parts[0], parts[1]);
+                }
+
                 Console.WriteLine("Processing file '" + arg + "'...");
 
                 string extension = Path.GetExtension(arg.ToLower());
