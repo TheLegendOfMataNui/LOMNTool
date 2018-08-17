@@ -57,7 +57,7 @@ namespace LOMNTool
             }
             else
             {
-                TempSections[section].Keys.Add(key, value);
+                TempSections[section][key] =  value;
             }
         }
 
