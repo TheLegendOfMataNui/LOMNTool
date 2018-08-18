@@ -59,45 +59,53 @@ namespace LOMNTool
             try
             {
 #endif
+            // Get all the config args
             foreach (string arg in args)
             {
                 if(arg.StartsWith("-"))
                 {
                     Console.WriteLine("Parsing Command Line Argument " + arg);
-                    string[] parts = arg.Substring(arg.IndexOf(']')+1).Split('=');
+                    string[] parts = arg.Substring(arg.IndexOf(']') + 1).Split('=');
                     Config.SetTemporary(arg.Substring(arg.IndexOf('[') + 1, arg.IndexOf(']') - 2), parts[0], parts[1]);
                 }
+            }
 
-                Console.WriteLine("Processing file '" + arg + "'...");
+            // Process the files
+            foreach (string arg in args)
+            {
+                if (!arg.StartsWith("-"))
+                {
+                    Console.WriteLine("Processing file '" + arg + "'...");
 
-                string extension = Path.GetExtension(arg.ToLower());
-                if (arg.EndsWith(".bcl.obj"))
-                {
-                    BCLOBJFile(arg);
-                }
-                else if (extension == ".x")
-                {
-                    XFile(arg);
-                }
-                else if (extension == ".obj")
-                {
-                    OBJFile(arg);
-                }
-                else if (extension == ".bcl")
-                {
-                    BCLFile(arg);
-                }
-                else if (extension == ".ocl")
-                {
-                    OCLFile(arg);
-                }
-                else if (extension == ".dae")
-                {
-                    DAEFile(arg);
-                }
-                else
-                {
-                    Console.WriteLine("Unknown file extension '" + extension + "'!");
+                    string extension = Path.GetExtension(arg.ToLower());
+                    if (arg.EndsWith(".bcl.obj"))
+                    {
+                        BCLOBJFile(arg);
+                    }
+                    else if (extension == ".x")
+                    {
+                        XFile(arg);
+                    }
+                    else if (extension == ".obj")
+                    {
+                        OBJFile(arg);
+                    }
+                    else if (extension == ".bcl")
+                    {
+                        BCLFile(arg);
+                    }
+                    else if (extension == ".ocl")
+                    {
+                        OCLFile(arg);
+                    }
+                    else if (extension == ".dae")
+                    {
+                        DAEFile(arg);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Unknown file extension '" + extension + "'!");
+                    }
                 }
             }
             #if !DEBUG

@@ -22,17 +22,6 @@ namespace LOMNTool
                     return TempSections[sectionName];
                 return Sections[sectionName];
             }
-            set
-            {
-                if (!Sections.ContainsKey(sectionName))
-                {
-                    Sections.Add(sectionName, value);
-                }
-                else
-                {
-                    Sections[sectionName] = value;
-                }
-            }
         }
 
         public INIConfig()
@@ -63,7 +52,6 @@ namespace LOMNTool
 
         public string GetValueOrDefault(string section, string key, string defaultValue = null)
         {
-            //TODO: LOOK IN TEMP FIRST THEN THE REST.
             if (!Sections.ContainsKey(section) && !TempSections.ContainsKey(section))
                 return defaultValue;
             INISection s;
