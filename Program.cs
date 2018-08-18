@@ -11,6 +11,7 @@ namespace LOMNTool
     public class Program
     {
         public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\characters\onua\Xs\onua.x";
+        //public const string TestFile = @"D:\User Inforamtion\Desktop\B Data\Data\characters\onua\Xs\onua.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\main.bcl.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main Omega.bcl.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Watr2.bcl.obj";
@@ -58,38 +59,53 @@ namespace LOMNTool
             try
             {
 #endif
+            // Get all the config args
             foreach (string arg in args)
             {
-                Console.WriteLine("Processing file '" + arg + "'...");
+                if(arg.StartsWith("-"))
+                {
+                    Console.WriteLine("Parsing Command Line Argument " + arg);
+                    string[] parts = arg.Substring(arg.IndexOf(']') + 1).Split('=');
+                    Config.SetTemporary(arg.Substring(arg.IndexOf('[') + 1, arg.IndexOf(']') - 2), parts[0], parts[1]);
+                }
+            }
 
-                string extension = Path.GetExtension(arg.ToLower());
-                if (arg.EndsWith(".bcl.obj"))
+            // Process the files
+            foreach (string arg in args)
+            {
+                if (!arg.StartsWith("-"))
                 {
-                    BCLOBJFile(arg);
-                }
-                else if (extension == ".x")
-                {
-                    XFile(arg);
-                }
-                else if (extension == ".obj")
-                {
-                    OBJFile(arg);
-                }
-                else if (extension == ".bcl")
-                {
-                    BCLFile(arg);
-                }
-                else if (extension == ".ocl")
-                {
-                    OCLFile(arg);
-                }
-                else if (extension == ".dae")
-                {
-                    DAEFile(arg);
-                }
-                else
-                {
-                    Console.WriteLine("Unknown file extension '" + extension + "'!");
+                    Console.WriteLine("Processing file '" + arg + "'...");
+
+                    string extension = Path.GetExtension(arg.ToLower());
+                    if (arg.EndsWith(".bcl.obj"))
+                    {
+                        BCLOBJFile(arg);
+                    }
+                    else if (extension == ".x")
+                    {
+                        XFile(arg);
+                    }
+                    else if (extension == ".obj")
+                    {
+                        OBJFile(arg);
+                    }
+                    else if (extension == ".bcl")
+                    {
+                        BCLFile(arg);
+                    }
+                    else if (extension == ".ocl")
+                    {
+                        OCLFile(arg);
+                    }
+                    else if (extension == ".dae")
+                    {
+                        DAEFile(arg);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Unknown file extension '" + extension + "'!");
+                    }
                 }
             }
             #if !DEBUG
