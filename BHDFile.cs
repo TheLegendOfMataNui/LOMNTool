@@ -13,6 +13,9 @@ namespace LOMNTool
     /// </summary>
     public class BHDFile
     {
+        /// <summary>
+        /// The biped bone names as defined in the Legend of Mata Nui binary.
+        /// </summary>
         public static string[] BipedBoneNames =
         {
             "Bip01",
@@ -117,22 +120,116 @@ namespace LOMNTool
             "Bip01_Tail1"
         };
 
+        /// <summary>
+        /// The non-biped bone names as defined in the Legend of Mata Nui binary.
+        /// </summary>
+        public static string[] NonBipedBoneNames =
+        {
+            "root",
+            "Dummy01",
+            "Dummy02",
+            "Dummy03",
+            "Dummy04",
+            "Dummy05",
+            "Dummy06",
+            "Dummy07",
+            "Dummy08",
+            "Dummy09",
+            "Dummy10",
+            "Dummy11",
+            "Dummy12",
+            "Dummy13",
+            "Dummy14",
+            "Dummy15",
+            "Dummy16",
+            "Dummy17",
+            "Dummy18",
+            "Dummy19",
+            "Dummy20",
+            "Dummy21",
+            "Dummy22",
+            "Dummy23",
+            "Dummy24",
+            "Dummy25",
+            "Dummy26",
+            "Dummy27",
+            "Dummy28",
+            "Dummy29",
+            "Dummy30",
+            "Dummy31",
+            "Dummy32",
+            "Dummy33",
+            "Dummy34",
+            "Dummy35",
+            "Dummy36",
+            "Dummy37",
+            "Dummy38",
+            "Dummy39",
+            "Dummy40",
+            "Dummy41",
+            "Dummy42",
+            "Dummy43",
+            "Dummy44",
+            "Dummy45",
+            "Dummy46",
+            "Dummy47",
+            "Dummy48",
+            "Dummy49",
+            "Dummy50",
+            "Dummy51",
+            "Dummy52",
+            "Dummy53",
+            "Dummy54",
+            "Dummy55",
+            "Dummy56",
+            "Dummy57",
+            "Dummy58",
+            "Dummy59"
+        };
+
+        /// <summary>
+        /// A bone in the skeleton.
+        /// </summary>
         public class Bone
         {
+            /// <summary>
+            /// Which bone this is in the file, and also the index into the name arrays (<see cref="BipedBoneNames"/> and <see cref="NonBipedBoneNames"/>)
+            /// </summary>
             public uint Index;
-            public uint ParentIndex; // 0xFFFFFFFF means this bone name isn't used.
+
+            /// <summary>
+            /// The index of the parent bone (or equal to <see cref="Index"/> if this bone is a root bone, or 0xFFFFFFFF if the name corresponding to <see cref="Index"/> isn't used in the skeleton.)
+            /// </summary>
+            public uint ParentIndex;
+
+            /// <summary>
+            /// The transform of this Bone relative to its parent Bone.
+            /// </summary>
             public Matrix Transform;
 
+            /// <summary>
+            /// A List of all the bones that had this Bone's <see cref="Index"/> as their <see cref="ParentIndex"/> when the <see cref="BHDFile"/> was loaded.
+            /// </summary>
             public List<Bone> Children = new List<Bone>(); // Not stored in the file, just computed to be helpful.
         }
 
+        /// <summary>
+        /// The <see cref="Bone"/>s in this BHDFile.
+        /// </summary>
         public List<Bone> Bones = new List<Bone>();
 
+        /// <summary>
+        /// Creates an empty BHDFile.
+        /// </summary>
         public BHDFile()
         {
 
         }
 
+        /// <summary>
+        /// Creates a BHDFile by reading the data from the given file.
+        /// </summary>
+        /// <param name="filename">The name of the file that data should be read from.</param>
         public BHDFile(string filename)
         {
             using (FileStream stream = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -155,14 +252,6 @@ namespace LOMNTool
                         Bones[(int)b.ParentIndex].Children.Add(b);
                     }
 
-                    /*b.Transform = new Matrix(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), 0.0f,
-                                                reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), 0.0f,
-                                                reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), 0.0f,
-                                                reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), 1.0f);*/
-                    /*b.Transform = new Matrix(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(),
-                                                reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(),
-                                                reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(),
-                                                0.0f, 0.0f, 0.0f, 1.0f);*/
                     b.Transform.Column1 = new Vector4(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), 0.0f);
                     b.Transform.Column2 = new Vector4(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), 0.0f);
                     b.Transform.Column3 = new Vector4(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), 0.0f);
@@ -171,6 +260,10 @@ namespace LOMNTool
             }
         }
 
+        /// <summary>
+        /// Writes this BHDFile to the given file.
+        /// </summary>
+        /// <param name="filename">The filename to write to.</param>
         public void Write(string filename)
         {
             using (FileStream stream = new FileStream(filename, FileMode.Create, FileAccess.Write, FileShare.Read))
@@ -183,18 +276,18 @@ namespace LOMNTool
                 }
                 foreach (Bone b in Bones)
                 {
-                    writer.Write(b.Transform.M11);
-                    writer.Write(b.Transform.M12);
-                    writer.Write(b.Transform.M13);
-                    writer.Write(b.Transform.M21);
-                    writer.Write(b.Transform.M22);
-                    writer.Write(b.Transform.M23);
-                    writer.Write(b.Transform.M31);
-                    writer.Write(b.Transform.M32);
-                    writer.Write(b.Transform.M33);
-                    writer.Write(b.Transform.M41);
-                    writer.Write(b.Transform.M42);
-                    writer.Write(b.Transform.M43);
+                    writer.Write(b.Transform.Column1.X);
+                    writer.Write(b.Transform.Column1.Y);
+                    writer.Write(b.Transform.Column1.Z);
+                    writer.Write(b.Transform.Column2.X);
+                    writer.Write(b.Transform.Column2.Y);
+                    writer.Write(b.Transform.Column2.Z);
+                    writer.Write(b.Transform.Column3.X);
+                    writer.Write(b.Transform.Column3.Y);
+                    writer.Write(b.Transform.Column3.Z);
+                    writer.Write(b.Transform.Column4.X);
+                    writer.Write(b.Transform.Column4.Y);
+                    writer.Write(b.Transform.Column4.Z);
                 }
             }
         }
