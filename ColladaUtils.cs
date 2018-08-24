@@ -61,6 +61,11 @@ namespace LOMNTool.Collada
             return new Matrix(values);
         }
 
+        private static XElement WriteMatrix(Matrix m)
+        {
+            return new XElement((XNamespace)SCHEMA_URL + "matrix", String.Join(" ", m.ToArray()));
+        }
+
         public static XFile ImportCOLLADA(string filename, Matrix transform, bool flipV = true, bool stripExtensions = true)
         {
             XFile result = new XFile(new XHeader());
@@ -394,7 +399,19 @@ namespace LOMNTool.Collada
             return result;
         }
 
-        public static void ExportCOLLADA(XFile file, string filename, Matrix transform, bool flipV = true, string textureExtension = null, bool stripUnusedMaterials = false)
+        private static XElement ExportCOLLADABone(BHDFile.Bone bone, Matrix transform, string[] boneNames)
+        {
+            XElement result = new XElement((XNamespace)SCHEMA_URL + "node", new XAttribute("type", "JOINT"), new XAttribute("name", boneNames[(int)bone.Index]), new XAttribute("sid", boneNames[(int)bone.Index]), new XAttribute("id", boneNames[(int)bone.Index]), WriteMatrix(transform * bone.Transform));
+
+            for (int i = 0; i < bone.Children.Count; i++)
+            {
+                result.Add(ExportCOLLADABone(bone.Children[i], Matrix.Identity, boneNames)); // Don't pass on the transform, children inherit it anyway because of how hierarchies work
+            }
+
+            return result;
+        }
+
+        public static void ExportCOLLADA(XFile file, BHDFile bhd, string filename, Matrix transform, bool flipV = true, string textureExtension = null, bool stripUnusedMaterials = false)
         {
             XNamespace ns = SCHEMA_URL;
             XDocument doc = new XDocument();
@@ -443,6 +460,7 @@ namespace LOMNTool.Collada
                         geometry.Add(mesh);
 
                         XElement controller = null;
+                        List<string> boneNames = new List<string>();
 
                         int materialCount = -1;
                         // Maps material indices to face indices
@@ -659,7 +677,9 @@ namespace LOMNTool.Collada
                             }
                             else if (child.Object.DataType.NameData == "SkinWeights")
                             {
-
+                                string name = (string)child.Object["transformNodeName"].Values[0];
+                                boneNames.Add(name);
+                                Console.WriteLine(name);
                             }
                         }
 
@@ -757,11 +777,48 @@ namespace LOMNTool.Collada
 
                         library_geometries.Add(geometry);
 
-                        visual_scene.Add(new XElement(ns + "node", new XAttribute("name", "Mesh" + meshID + "Instance"), new XAttribute("id", "Mesh" + meshID + "Instance"), new XAttribute("sid", "Mesh" + meshID + "Instance"),
-                            new XElement(ns + "matrix", new XAttribute("sid", "matrix"), "1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0"),
-                            new XElement(ns + "instance_geometry", new XAttribute("url", "#Mesh" + meshID + "-GEOMETRY"),
-                                new XElement(ns + "bind_material",
-                                    bindMaterialCommon))));
+                        /*if (bhd == null)
+                        {*/
+                            visual_scene.Add(new XElement(ns + "node", new XAttribute("name", "Mesh" + meshID + "Instance"), new XAttribute("id", "Mesh" + meshID + "Instance"), new XAttribute("sid", "Mesh" + meshID + "Instance"),
+                                new XElement(ns + "matrix", new XAttribute("sid", "matrix"), "1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0"),
+                                new XElement(ns + "instance_geometry", new XAttribute("url", "#Mesh" + meshID + "-GEOMETRY"),
+                                    new XElement(ns + "bind_material",
+                                        bindMaterialCommon))));
+                        /*}
+                        else
+                        {*/
+                            // Create the bone nodes in the scene
+                            if (bhd != null)
+                            {
+                                for (int i = 0; i < bhd.Bones.Count; i++)
+                                {
+                                    BHDFile.Bone b = bhd.Bones[i];
+                                    if (b.ParentIndex == i)
+                                    {
+                                        visual_scene.Add(ExportCOLLADABone(b, Matrix.Transpose(transform), BHDFile.BipedBoneNames));
+                                    }
+                                }
+                            }
+
+                            /*XElement nameSource = new XElement(ns + "source", new XAttribute("id", "libctl-Mesh" + meshID + "-SKIN-NAMES"),
+                                                    new XElement(ns + "Name_array", new XAttribute("id", "libctl-Mesh" + meshID + "-SKIN-NAMES-DATA"), new XAttribute("count", boneNames.Count), String.Join(" ", boneNames)),
+                                                    new XElement(ns + "technique_common", 
+                                                        new XElement(ns + "accessor", new XAttribute("source", "#libctl-Mesh" + meshID + "-SKIN-NAMES-DATA"), new XAttribute("count", boneNames.Count), new XAttribute("stride", "1"),
+                                                            new XElement(ns + "param", new XAttribute("name", "JOINT"), new XAttribute("type", "Name")))));
+
+                            controller = new XElement(ns + "controller", new XAttribute("id", "libctl-Mesh" + meshID + "-SKIN"), new XAttribute("name", "Mesh" + meshID + "-SKIN"),
+                                                        new XElement(ns + "skin", new XAttribute("source", "#Mesh" + meshID + "-GEOMETRY"),
+                                                            new XElement(ns + "bind_shape_matrix", "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"),
+                                                            nameSource)); // Identity matrix
+
+                            library_controllers.Add(controller);
+
+                            visual_scene.Add(new XElement(ns + "node", new XAttribute("name", "Mesh" + meshID + "Instance"), new XAttribute("id", "Mesh" + meshID + "Instance"), new XAttribute("sid", "Mesh" + meshID + "Instance"),
+                                new XElement(ns + "instance_controller", new XAttribute("url", "#libctl-Mesh" + meshID + "-SKIN"),
+                                    new XElement(ns + "skeleton", "#bone0"), // HACK: assume there is always exactly one valid root bone, and it is the first bone.
+                                    new XElement(ns + "bind_material",
+                                        bindMaterialCommon))));
+                        }*/
 
                         meshID++;
                     }
@@ -772,6 +829,8 @@ namespace LOMNTool.Collada
             COLLADA.Add(library_materials);
             COLLADA.Add(library_effects);
             COLLADA.Add(library_geometries);
+            if (bhd != null)
+                COLLADA.Add(library_controllers);
             COLLADA.Add(new XElement(ns + "library_visual_scenes", visual_scene));
             COLLADA.Add(new XElement(ns + "scene",
                 new XElement(ns + "instance_visual_scene", new XAttribute("url", "#Scene"))));

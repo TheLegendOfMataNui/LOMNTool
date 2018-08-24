@@ -10,7 +10,7 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\characters\onua\Xs\onua.x";
+        public const string TestFile = @"C:\Program Files (x86)\LEGO Media\LEGO Bionicle\data\characters\onua\onua.x";
         //public const string TestFile = @"D:\User Inforamtion\Desktop\B Data\Data\characters\onua\Xs\onua.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\main.bcl.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main Omega.bcl.obj";
@@ -136,9 +136,15 @@ namespace LOMNTool
                 }
                 else if (modelFormat == "DAE")
                 {
+                    BHDFile bhd = null;
+                    if (File.Exists(Path.ChangeExtension(arg, ".bhd")))
+                    {
+                        Console.WriteLine("    Reading BHD...");
+                        bhd = new BHDFile(Path.ChangeExtension(arg, ".bhd"));
+                    }
                     Console.WriteLine("    Writing DAE file...");
                     bool stripUnusedMaterials = Config.GetValueOrDefault("DAE", "StripUnusedMaterials", "False").ToLower() == "true";
-                    Collada.Utils.ExportCOLLADA(file, Path.ChangeExtension(arg, ".dae"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds", stripUnusedMaterials);
+                    Collada.Utils.ExportCOLLADA(file, bhd, Path.ChangeExtension(arg, ".dae"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds", stripUnusedMaterials);
                 }
                 else if (modelFormat == "TXT")
                 {
