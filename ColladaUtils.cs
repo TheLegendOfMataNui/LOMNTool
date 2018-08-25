@@ -61,6 +61,11 @@ namespace LOMNTool.Collada
             return new Matrix(values);
         }
 
+        private static XElement WriteMatrix(Matrix m)
+        {
+            return new XElement((XNamespace)SCHEMA_URL + "matrix", String.Join(" ", m.ToArray()));
+        }
+
         public static XFile ImportCOLLADA(string filename, Matrix transform, bool flipV = true, bool stripExtensions = true)
         {
             XFile result = new XFile(new XHeader());
@@ -394,7 +399,19 @@ namespace LOMNTool.Collada
             return result;
         }
 
-        public static void ExportCOLLADA(XFile file, string filename, Matrix transform, bool flipV = true, string textureExtension = null, bool stripUnusedMaterials = false)
+        private static XElement ExportCOLLADABone(BHDFile.Bone bone, Matrix transform, string[] boneNames)
+        {
+            XElement result = new XElement((XNamespace)SCHEMA_URL + "node", new XAttribute("type", "JOINT"), new XAttribute("name", boneNames[(int)bone.Index]), new XAttribute("sid", boneNames[(int)bone.Index]), new XAttribute("id", boneNames[(int)bone.Index]), WriteMatrix(transform * bone.Transform));
+
+            for (int i = 0; i < bone.Children.Count; i++)
+            {
+                result.Add(ExportCOLLADABone(bone.Children[i], Matrix.Identity, boneNames)); // Don't pass on the transform, children inherit it anyway because of how hierarchies work
+            }
+
+            return result;
+        }
+
+        public static void ExportCOLLADA(XFile file, BHDFile bhd, string filename, Matrix transform, bool flipV = true, string textureExtension = null, bool stripUnusedMaterials = false)
         {
             XNamespace ns = SCHEMA_URL;
             XDocument doc = new XDocument();
@@ -436,6 +453,7 @@ namespace LOMNTool.Collada
                         bool hasColors = false;
 
                         D3DX.Mesh.XObject normalObject = null;
+                        Dictionary<string, D3DX.Mesh.XObject> skinWeightObjects = new Dictionary<string, D3DX.Mesh.XObject>();
 
                         XElement geometry = new XElement(ns + "geometry", new XAttribute("id", "Mesh" + meshID + "-GEOMETRY"), new XAttribute("name", "Mesh" + meshID));
                         XElement mesh = new XElement(ns + "mesh");
@@ -659,7 +677,26 @@ namespace LOMNTool.Collada
                             }
                             else if (child.Object.DataType.NameData == "SkinWeights")
                             {
+                                string name = (string)child.Object["transformNodeName"].Values[0];
+                                Console.WriteLine("    " + name);
+                                skinWeightObjects.Add(name, child.Object);
 
+                                // Detect biped vs non-biped
+                                if (bhd.NameSlots == null)
+                                {
+                                    if (name == BHDFile.BipedBoneNames[0])
+                                    {
+                                        bhd.NameSlots = BHDFile.BipedBoneNames;
+                                    }
+                                    else if (name == BHDFile.NonBipedBoneNames[0])
+                                    {
+                                        bhd.NameSlots = BHDFile.NonBipedBoneNames;
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine("[ERROR]: Root bone '" + name + "' isn't biped or non-biped!");
+                                    }
+                                }
                             }
                         }
 
@@ -757,11 +794,126 @@ namespace LOMNTool.Collada
 
                         library_geometries.Add(geometry);
 
-                        visual_scene.Add(new XElement(ns + "node", new XAttribute("name", "Mesh" + meshID + "Instance"), new XAttribute("id", "Mesh" + meshID + "Instance"), new XAttribute("sid", "Mesh" + meshID + "Instance"),
-                            new XElement(ns + "matrix", new XAttribute("sid", "matrix"), "1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0"),
-                            new XElement(ns + "instance_geometry", new XAttribute("url", "#Mesh" + meshID + "-GEOMETRY"),
-                                new XElement(ns + "bind_material",
-                                    bindMaterialCommon))));
+                        if (bhd == null)
+                        {
+                            visual_scene.Add(new XElement(ns + "node", new XAttribute("name", "Mesh" + meshID + "Instance"), new XAttribute("id", "Mesh" + meshID + "Instance"), new XAttribute("sid", "Mesh" + meshID + "Instance"),
+                                new XElement(ns + "matrix", new XAttribute("sid", "matrix"), "1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0"),
+                                new XElement(ns + "instance_geometry", new XAttribute("url", "#Mesh" + meshID + "-GEOMETRY"),
+                                    new XElement(ns + "bind_material",
+                                        bindMaterialCommon))));
+                        }
+                        else
+                        {
+                            List<string> usedNames = new List<string>();
+                            List<float> bindPoseData = new List<float>();
+                            List<float> weightsData = new List<float>();
+
+                            // Aggregate all the bone influences from per-bone (.X style) data to per-vertex (.DAE style) data.
+                            List<int> countData = new List<int>(); // The counts of influences per vertex
+                            List<int> indexData = new List<int>(); // for each vertex, for each influence, name index followed by weight index.
+                            List<List<Tuple<int, int>>> vertexData = new List<List<Tuple<int, int>>>(); // List of List of indexes into usedNames and weightsData
+                            for (int i = 0; i < vertexCount; i++)
+                                vertexData.Add(new List<Tuple<int, int>>()); // Pre-populate with empty lists
+                            for (int bone = 0; bone < bhd.Bones.Count; bone++)
+                            {
+                                BHDFile.Bone b = bhd.Bones[bone];
+                                if (b.ParentIndex == bone) // Stand-alone (root) bones are their own parents.
+                                {
+                                    // Create the bone nodes in the scene
+                                    visual_scene.Add(ExportCOLLADABone(b, Matrix.Transpose(transform), bhd.NameSlots));
+                                }
+                                if (b.ParentIndex != 0xFFFFFFFF)
+                                {
+                                    string name = bhd.NameSlots[b.Index];
+                                    usedNames.Add(name);
+                                    D3DX.Mesh.XObject skinWeights = skinWeightObjects[name];
+                                    List<float> matrixParts = new List<float>();
+                                    foreach (object ob in ((XObjectStructure)skinWeights["matrixOffset"].Values[0])["matrix"].Values)
+                                        matrixParts.Add((float)(double)ob);
+                                    Matrix trans = new Matrix(matrixParts.ToArray());
+                                    trans = Matrix.Multiply(Matrix.Invert(transform), trans);
+                                    trans.Transpose();
+                                    foreach (float f in trans.ToArray())
+                                        bindPoseData.Add(f);
+
+                                    List<object> indices = skinWeights["vertexIndices"].Values;
+                                    List<object> weights = skinWeights["weights"].Values;
+                                    int nWeights = (int)skinWeights["nWeights"].Values[0];
+                                    int usedCount = 0;
+                                    for (int i = 0; i < nWeights; i++)
+                                    {
+                                        float weight = (float)(double)weights[i];
+                                        if (weight > 0.0001)
+                                        {
+                                            int weightIndex = weightsData.IndexOf(weight);
+                                            if (weightIndex == -1)
+                                            {
+                                                weightIndex = weightsData.Count;
+                                                weightsData.Add(weight);
+                                            }
+                                            usedCount++;
+                                            vertexData[(int)indices[i]].Add(new Tuple<int, int>(usedNames.IndexOf(name), weightIndex));
+                                        }
+                                    }
+                                    if (usedCount == 0)
+                                        Console.WriteLine("        [WARNING]: Bone '" + bhd.NameSlots[b.Index] + "' influences zero vertices!");
+                                }
+                            }
+                            for (int vertex = 0; vertex < vertexData.Count; vertex++)
+                            {
+                                countData.Add(vertexData[vertex].Count);
+                                foreach (Tuple<int, int> vIndices in vertexData[vertex])
+                                {
+                                    indexData.Add(vIndices.Item1);
+                                    indexData.Add(vIndices.Item2);
+                                }
+                            }
+
+                            XElement nameSource = new XElement(ns + "source", new XAttribute("id", "libctl-Mesh" + meshID + "-SKIN-NAMES"),
+                                                    new XElement(ns + "Name_array", new XAttribute("id", "libctl-Mesh" + meshID + "-SKIN-NAMES-DATA"), new XAttribute("count", usedNames.Count), String.Join(" ", usedNames)),
+                                                    new XElement(ns + "technique_common", 
+                                                        new XElement(ns + "accessor", new XAttribute("source", "#libctl-Mesh" + meshID + "-SKIN-NAMES-DATA"), new XAttribute("count", usedNames.Count), new XAttribute("stride", "1"),
+                                                            new XElement(ns + "param", new XAttribute("name", "JOINT"), new XAttribute("type", "name")))));
+
+                            XElement bindPoseSource = new XElement(ns + "source", new XAttribute("id", "libctl-Mesh" + meshID + "-SKIN-POSE"),
+                                                        new XElement(ns + "float_array", new XAttribute("id", "libctl-Mesh" + meshID + "-SKIN-POSE-DATA"), new XAttribute("count", bindPoseData.Count.ToString()), String.Join(" ", bindPoseData)),
+                                                        new XElement(ns + "technique_common",
+                                                            new XElement(ns + "accessor", new XAttribute("source", "#libctl-Mesh" + meshID + "-SKIN-POSE-DATA"), new XAttribute("count", bindPoseData.Count / 16), new XAttribute("stride", "16"),
+                                                                new XElement(ns + "param", new XAttribute("name", "TRANSFORM"), new XAttribute("type", "float4x4")))));
+
+                            XElement weightsSource = new XElement(ns + "source", new XAttribute("id", "libctl-Mesh" + meshID + "-SKIN-WEIGHTS"),
+                                                        new XElement(ns + "float_array", new XAttribute("id", "libctl-Mesh" + meshID + "-SKIN-WEIGHTS-DATA"), new XAttribute("count", weightsData.Count.ToString()), String.Join(" ", weightsData)),
+                                                        new XElement(ns + "technique_common",
+                                                            new XElement(ns + "accessor", new XAttribute("source", "#libctl-Mesh" + meshID + "-SKIN-WEIGHTS-DATA"), new XAttribute("count", weightsData.Count.ToString()), new XAttribute("stride", "1"),
+                                                                new XElement(ns + "param", new XAttribute("name", "WEIGHT"), new XAttribute("type", "float")))));
+
+                            XElement joints = new XElement(ns + "joints",
+                                                new XElement(ns + "input", new XAttribute("semantic", "JOINT"), new XAttribute("source", "#libctl-Mesh" + meshID + "-SKIN-NAMES")),
+                                                new XElement(ns + "input", new XAttribute("semantic", "INV_BIND_MATRIX"), new XAttribute("source", "#libctl-Mesh" + meshID + "-SKIN-POSE")));
+
+                            XElement vertexWeights = new XElement(ns + "vertex_weights", new XAttribute("count", vertexCount),
+                                                        new XElement(ns + "input", new XAttribute("semantic", "JOINT"), new XAttribute("source", "#libctl-Mesh" + meshID + "-SKIN-NAMES"), new XAttribute("offset", "0")),
+                                                        new XElement(ns + "input", new XAttribute("semantic", "WEIGHT"), new XAttribute("source", "#libctl-Mesh" + meshID + "-SKIN-WEIGHTS"), new XAttribute("offset", "0")),
+                                                        new XElement(ns + "vcount", String.Join(" ", countData)),
+                                                        new XElement(ns + "v", String.Join(" ", indexData)));
+
+                            controller = new XElement(ns + "controller", new XAttribute("id", "libctl-Mesh" + meshID + "-SKIN"), new XAttribute("name", "Mesh" + meshID + "-SKIN"),
+                                                        new XElement(ns + "skin", new XAttribute("source", "#Mesh" + meshID + "-GEOMETRY"),
+                                                            new XElement(ns + "bind_shape_matrix", "1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"), // Identity matrix
+                                                            nameSource,
+                                                            bindPoseSource,
+                                                            weightsSource,
+                                                            joints,
+                                                            vertexWeights));
+
+                            library_controllers.Add(controller);
+
+                            visual_scene.Add(new XElement(ns + "node", new XAttribute("name", "Mesh" + meshID + "Instance"), new XAttribute("id", "Mesh" + meshID + "Instance"), new XAttribute("sid", "Mesh" + meshID + "Instance"),
+                                new XElement(ns + "instance_controller", new XAttribute("url", "#libctl-Mesh" + meshID + "-SKIN"),
+                                    new XElement(ns + "skeleton", "#" + bhd.NameSlots[0]), // HACK: assume there is always exactly one valid root bone, and it is the first bone.
+                                    new XElement(ns + "bind_material",
+                                        bindMaterialCommon))));
+                        }
 
                         meshID++;
                     }
@@ -772,6 +924,8 @@ namespace LOMNTool.Collada
             COLLADA.Add(library_materials);
             COLLADA.Add(library_effects);
             COLLADA.Add(library_geometries);
+            if (bhd != null)
+                COLLADA.Add(library_controllers);
             COLLADA.Add(new XElement(ns + "library_visual_scenes", visual_scene));
             COLLADA.Add(new XElement(ns + "scene",
                 new XElement(ns + "instance_visual_scene", new XAttribute("url", "#Scene"))));
