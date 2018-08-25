@@ -219,6 +219,11 @@ namespace LOMNTool
         public List<Bone> Bones = new List<Bone>();
 
         /// <summary>
+        /// The possible names of the bones in this BHDFile.
+        /// </summary>
+        public string[] NameSlots = null;
+
+        /// <summary>
         /// Creates an empty BHDFile.
         /// </summary>
         public BHDFile()
