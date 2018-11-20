@@ -1,4 +1,7 @@
-﻿using System;
+﻿#define NOMERGE
+//#define DUMB_FIXUP
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -264,19 +267,26 @@ namespace LOMNTool.Collada
                         }
 
                         int vertexIndex = vertices.IndexOf(vertex);
+
+
+#if !NOMERGE
+
                         if (vertexIndex > -1)
                         {
                             vertexIndices.Add(vertexIndex);
                         }
                         else
                         {
+#endif
                             vertices.Add(vertex);
                             vertexIndex = vertices.Count - 1;
                             vertexIndices.Add(vertexIndex);
-                        }
+#if !NOMERGE
+                    }
+#endif
                         if (!positionUsage[priorPositions + posIndex].Contains(vertexIndex))
                             positionUsage[priorPositions + posIndex].Add(vertexIndex);
-                        System.Diagnostics.Debug.WriteLine("Position " + (priorPositions + posIndex) + " used for vertex " + vertexIndex);
+                        //System.Diagnostics.Debug.WriteLine("Position " + (priorPositions + posIndex) + " used for vertex " + vertexIndex);
                     }
 
                     mesh["faces"].Values.Add(XUtils.Face(vertexIndices));
@@ -302,7 +312,7 @@ namespace LOMNTool.Collada
 
             if (hasColors)
             {
-                //mesh.Children.Add(new XChildObject(meshVertexColors, false));
+                mesh.Children.Add(new XChildObject(meshVertexColors, false));
             }
 
             // Fix all the counts.
@@ -472,6 +482,7 @@ namespace LOMNTool.Collada
             skinMeshHeader["nBones"].Values.Add(bones.Count);
             System.Diagnostics.Debug.WriteLine(inf + " influences.");
 
+#if DUMB_FIXUP
             // Dumb fixup: for each face, ensure that for all bones, if the bone has a weight for the first vertex then it must also have weights for the second and third vertices.
             int addedCount = 0;
             foreach (XObjectStructure meshFace in mesh["faces"].Values)
@@ -506,6 +517,7 @@ namespace LOMNTool.Collada
                 }
             }
             Console.WriteLine("Dumb Fixup: Added " + addedCount + " influences.");
+#endif
 
             return mesh;
         }
