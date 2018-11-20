@@ -10,7 +10,7 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"C:\Program Files (x86)\LEGO Media\LEGO Bionicle\data\characters\onua\onua.x";
+        public const string TestFile = @"D:\Program Files\LEGO Bionicle\data\characters\onua\Xs\onua.dae";
         //public const string TestFile = @"D:\User Inforamtion\Desktop\B Data\Data\characters\onua\Xs\onua.x";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\main.bcl.obj";
         //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main Omega.bcl.obj";
