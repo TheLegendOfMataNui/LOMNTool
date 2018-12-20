@@ -157,37 +157,71 @@ namespace LOMNTool.Collada
 
                     if (semantic == "VERTEX")
                     {
-                        // Redirect sourceReference to the POSITION source.
+                        // Each input in the <vertices> referenced by `sourceReference` has its own semantic and source, but shares a single offset.
                         XElement verticesElement = FindElementByReference(meshElement, ns + "vertices", sourceReference);
-                        sourceReference = verticesElement.Element(ns + "input").Attribute("source").Value;
-                    }
+                        foreach (XElement verticesInputElement in verticesElement.Elements(ns + "input"))
+                        {
+                            semantic = verticesInputElement.Attribute("semantic").Value.ToUpper();
+                            sourceReference = verticesInputElement.Attribute("source").Value;
 
-                    XElement dataElement = FindElementByReference(meshElement, ns + "source", sourceReference).Element(ns + "float_array");
-                    string[] data = dataElement.Value.Split(new char[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                            XElement dataElement = FindElementByReference(meshElement, ns + "source", sourceReference).Element(ns + "float_array");
+                            string[] data = dataElement.Value.Split(new char[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries);
 
-                    if (semantic == "VERTEX")
-                    {
-                        posData = data;
-                        posOffset = offset;
-                    }
-                    else if (semantic == "NORMAL")
-                    {
-                        normalData = data;
-                        normalOffset = offset;
-                    }
-                    else if (semantic == "TEXCOORD")
-                    {
-                        uvData = data;
-                        uvOffset = offset;
-                    }
-                    else if (semantic == "COLOR")
-                    {
-                        colorData = data;
-                        colorOffset = offset;
+                            if (semantic == "POSITION")
+                            {
+                                posData = data;
+                                posOffset = offset;
+                            }
+                            else if (semantic == "NORMAL")
+                            {
+                                normalData = data;
+                                normalOffset = offset;
+                            }
+                            else if (semantic == "TEXCOORD")
+                            {
+                                uvData = data;
+                                uvOffset = offset;
+                            }
+                            else if (semantic == "COLOR")
+                            {
+                                colorData = data;
+                                colorOffset = offset;
+                            }
+                            else
+                            {
+                                Console.WriteLine("[WARNING]: Unknown COLLADA vertices input semantic '" + semantic + "'!");
+                            }
+                        }
                     }
                     else
                     {
-                        Console.WriteLine("[WARNING]: Unknown COLLADA triangles input semantic '" + semantic + "'!");
+                        XElement dataElement = FindElementByReference(meshElement, ns + "source", sourceReference).Element(ns + "float_array");
+                        string[] data = dataElement.Value.Split(new char[] { ' ', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+                        if (semantic == "POSITION")
+                        {
+                            posData = data;
+                            posOffset = offset;
+                        }
+                        else if (semantic == "NORMAL")
+                        {
+                            normalData = data;
+                            normalOffset = offset;
+                        }
+                        else if (semantic == "TEXCOORD")
+                        {
+                            uvData = data;
+                            uvOffset = offset;
+                        }
+                        else if (semantic == "COLOR")
+                        {
+                            colorData = data;
+                            colorOffset = offset;
+                        }
+                        else
+                        {
+                            Console.WriteLine("[WARNING]: Unknown COLLADA triangles input semantic '" + semantic + "'!");
+                        }
                     }
                 }
 
@@ -431,7 +465,7 @@ namespace LOMNTool.Collada
                     List<int> thisPositionUsages = positionUsage[positionIndex];
                     foreach (int vertexIndex in thisPositionUsages)
                     {
-                        bool no = false;
+                        bool no = false; // is the given bone already influencing this vertex
                         foreach (Tuple<int, float> influence in bones[boneName].Influences)
                         {
                             if (influence.Item1 == vertexIndex)
@@ -460,8 +494,34 @@ namespace LOMNTool.Collada
 
             int inf = 0;
             int usedBones = 0;
-            foreach (BoneInfo bone in bones.Values)
+
+            string[] nameArray = null;
+            if (BHDFile.BipedBoneNames.Contains(bones.ElementAt(0).Key))
             {
+                nameArray = BHDFile.BipedBoneNames;
+            }
+            else if (BHDFile.NonBipedBoneNames.Contains(bones.ElementAt(0).Key))
+            {
+                nameArray = BHDFile.NonBipedBoneNames;
+            }
+            else
+            {
+                // Unknown bone name!
+                System.Diagnostics.Debugger.Break();
+            }
+
+            nameArray = new List<string>(nameArray).ToArray(); // The slacker's array copy
+            Array.Sort(nameArray);
+
+            //foreach (BoneInfo bone in bones.Values)
+            foreach (string boneName in nameArray)
+            {
+                if (!bones.ContainsKey(boneName))
+                    continue;
+                BoneInfo bone = bones[boneName];
+
+
+
                 if (bone.Influences.Count > 0)
                     usedBones++;
                 D3DX.Mesh.XObject skinWeights = XReader.NativeTemplates["SkinWeights"].Instantiate();
