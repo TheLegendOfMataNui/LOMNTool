@@ -318,8 +318,11 @@ namespace LOMNTool.Collada
 #if !NOMERGE
                     }
 #endif
-                        if (!positionUsage[priorPositions + posIndex].Contains(vertexIndex))
-                            positionUsage[priorPositions + posIndex].Add(vertexIndex);
+                        if (positionUsage != null)
+                        {
+                            if (!positionUsage[priorPositions + posIndex].Contains(vertexIndex))
+                                positionUsage[priorPositions + posIndex].Add(vertexIndex);
+                        }
                         //System.Diagnostics.Debug.WriteLine("Position " + (priorPositions + posIndex) + " used for vertex " + vertexIndex);
                     }
 
