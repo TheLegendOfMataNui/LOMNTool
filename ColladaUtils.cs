@@ -1,5 +1,4 @@
-﻿#define NOMERGE
-//#define DUMB_FIXUP
+﻿//#define DUMB_FIXUP
 
 using System;
 using System.Collections.Generic;
@@ -69,7 +68,7 @@ namespace LOMNTool.Collada
             return new XElement((XNamespace)SCHEMA_URL + "matrix", String.Join(" ", m.ToArray()));
         }
 
-        private static D3DX.Mesh.XObject ImportCOLLADAMesh(string name, XElement materialBinding, Matrix totalTransform, XElement geometryElement, Dictionary<string, D3DX.Mesh.XObject> materials, bool flipV, List<List<int>> positionUsage = null)
+        private static D3DX.Mesh.XObject ImportCOLLADAMesh(string name, XElement materialBinding, Matrix totalTransform, XElement geometryElement, Dictionary<string, D3DX.Mesh.XObject> materials, bool flipV, bool mergeVertices, List<List<int>> positionUsage = null)
         {
             XNamespace ns = SCHEMA_URL;
 
@@ -81,6 +80,11 @@ namespace LOMNTool.Collada
             D3DX.Mesh.XObject meshVertexColors = XReader.NativeTemplates["MeshVertexColors"].Instantiate();
             D3DX.Mesh.XObject meshMaterialList = XReader.NativeTemplates["MeshMaterialList"].Instantiate();
             mesh.Children.Add(new XChildObject(meshMaterialList, false));
+
+            if (mergeVertices)
+                Console.WriteLine("  Rigid Mesh - Merging Enabled");
+            else
+                Console.WriteLine("  Skinned Mesh - Merging Disabled");
 
             // Material Binding - relates material names (the key) to material URIs (the value)
             Dictionary<string, string> materialBinds = null;
@@ -179,8 +183,11 @@ namespace LOMNTool.Collada
                             }
                             else if (semantic == "TEXCOORD")
                             {
-                                uvData = data;
-                                uvOffset = offset;
+                                if (inputElement.Attribute("set") == null || Int32.Parse(inputElement.Attribute("set").Value) == 0)
+                                {
+                                    uvData = data;
+                                    uvOffset = offset;
+                                }
                             }
                             else if (semantic == "COLOR")
                             {
@@ -210,8 +217,11 @@ namespace LOMNTool.Collada
                         }
                         else if (semantic == "TEXCOORD")
                         {
-                            uvData = data;
-                            uvOffset = offset;
+                            if (inputElement.Attribute("set") == null || Int32.Parse(inputElement.Attribute("set").Value) == 0)
+                            {
+                                uvData = data;
+                                uvOffset = offset;
+                            }
                         }
                         else if (semantic == "COLOR")
                         {
@@ -303,21 +313,27 @@ namespace LOMNTool.Collada
                         int vertexIndex = vertices.IndexOf(vertex);
 
 
-#if !NOMERGE
-
-                        if (vertexIndex > -1)
+                        if (mergeVertices)
                         {
-                            vertexIndices.Add(vertexIndex);
+                            if (vertexIndex > -1)
+                            {
+                                vertexIndices.Add(vertexIndex);
+                            }
+                            else
+                            {
+                                vertices.Add(vertex);
+                                vertexIndex = vertices.Count - 1;
+                                vertexIndices.Add(vertexIndex);
+                            }
                         }
                         else
                         {
-#endif
                             vertices.Add(vertex);
                             vertexIndex = vertices.Count - 1;
                             vertexIndices.Add(vertexIndex);
-#if !NOMERGE
-                    }
-#endif
+                        }
+
+
                         if (positionUsage != null)
                         {
                             if (!positionUsage[priorPositions + posIndex].Contains(vertexIndex))
@@ -388,7 +404,7 @@ namespace LOMNTool.Collada
 
             // Take advantage of the existing static mesh import
             List<List<int>> positionUsage = new List<List<int>>(); // We need to know which .X vertices correspond to which .DAE positions. XIndices = positionUsage[DAEPositionIndex]
-            D3DX.Mesh.XObject mesh = ImportCOLLADAMesh(name, materialBinding, totalTransform, geometryElement, materials, flipV, positionUsage);
+            D3DX.Mesh.XObject mesh = ImportCOLLADAMesh(name, materialBinding, totalTransform, geometryElement, materials, flipV, false, positionUsage);
 
             string[] names = null;
 
@@ -687,7 +703,7 @@ namespace LOMNTool.Collada
                     string name = node.Attribute("name").Value;
                     XElement materialBinding = geoInstanceElement.Element(ns + "bind_material");
                     XElement geometryElement = FindElementByReference(geometryLibrary, ns + "geometry", geoInstanceElement.Attribute("url").Value);
-                    D3DX.Mesh.XObject mesh = ImportCOLLADAMesh(name, materialBinding, totalTransform, geometryElement, materials, flipV);
+                    D3DX.Mesh.XObject mesh = ImportCOLLADAMesh(name, materialBinding, totalTransform, geometryElement, materials, flipV, true);
                     frameObject.Children.Add(new XChildObject(mesh, false));
                 }
                 else if (controllerInstanceElement != null)
