@@ -81,6 +81,15 @@ namespace LOMNTool.Collada
             D3DX.Mesh.XObject meshMaterialList = XReader.NativeTemplates["MeshMaterialList"].Instantiate();
             mesh.Children.Add(new XChildObject(meshMaterialList, false));
 
+            if (Program.Config.GetValueOrDefault("DAE", "ForceMerge", "").ToLowerInvariant() == "never")
+            {
+                mergeVertices = false;
+            }
+            else if (Program.Config.GetValueOrDefault("DAE", "ForceMerge", "").ToLowerInvariant() == "always")
+            {
+                mergeVertices = true;
+            }
+
             if (mergeVertices)
                 Console.WriteLine("  Rigid Mesh - Merging Enabled");
             else
