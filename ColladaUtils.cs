@@ -278,8 +278,17 @@ namespace LOMNTool.Collada
                         if (uvData == null)
                             throw new FormatException("[ERROR]: No texture coordinates!");
                         int uvIndex = indices[pIndex + uvOffset];
-                        float uvX = ParseFloat(uvData[uvIndex * 2]);
-                        float uvY = ParseFloat(uvData[uvIndex * 2 + 1]);
+                        float uvX = 0.0f;
+                        float uvY = 0.0f;
+                        if (uvIndex >= 0)
+                        {
+                            uvX = ParseFloat(uvData[uvIndex * 2]);
+                            uvY = ParseFloat(uvData[uvIndex * 2 + 1]);
+                        }
+                        else
+                        {
+                            Console.WriteLine("[WARNING]: Triangle " + i + " vertex " + v + " has no UV index! Using (0, 0).");
+                        }
                         if (flipV)
                             uvY = 1.0f - uvY;
 
