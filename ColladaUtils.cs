@@ -650,14 +650,17 @@ namespace LOMNTool.Collada
 
             // Read all the textures
             Dictionary<string, string> textureFilenames = new Dictionary<string, string>();
-            foreach (XElement imageElement in imagesLibrary.Elements(ns + "image"))
+            if (imagesLibrary != null)
             {
-                string path = imageElement.Element(ns + "init_from").Value.Trim();
-                if (stripExtensions)
-                    path = System.IO.Path.GetFileNameWithoutExtension(path);
-                else
-                    path = System.IO.Path.GetFileName(path);
-                textureFilenames.Add(imageElement.Attribute("id").Value, path);
+                foreach (XElement imageElement in imagesLibrary.Elements(ns + "image"))
+                {
+                    string path = imageElement.Element(ns + "init_from").Value.Trim();
+                    if (stripExtensions)
+                        path = System.IO.Path.GetFileNameWithoutExtension(path);
+                    else
+                        path = System.IO.Path.GetFileName(path);
+                    textureFilenames.Add(imageElement.Attribute("id").Value, path);
+                }
             }
 
             // Read all the materials
@@ -736,6 +739,79 @@ namespace LOMNTool.Collada
 
             result.Objects.Add(frameObject);
 
+            return result;
+        }
+
+        private static void ImportCOLLADABone(XElement boneNode, uint parentIndex, BHDFile.Bone[] bones, Matrix transform, bool isBiped)
+        {
+            XNamespace ns = SCHEMA_URL;
+
+            BHDFile.Bone bone = new BHDFile.Bone();
+            bone.ParentIndex = parentIndex;
+            bone.Transform = ReadMatrix(boneNode.Element(ns + "matrix")); // * transform; // WriteMatrix(transform * bone.Transform)
+            
+
+            uint index = (uint)Array.IndexOf(isBiped ? BHDFile.BipedBoneNames : BHDFile.NonBipedBoneNames, boneNode.Attribute("name").Value);
+            
+            if (index == 0)
+            {
+                bone.Transform = bone.Transform * transform;
+                float temp = bone.Transform.M24;
+                bone.Transform.M24 = -bone.Transform.M34;
+                bone.Transform.M34 = temp;
+            }
+            
+            bones[index] = bone;
+
+            foreach (XElement childBoneNode in boneNode.Elements(ns + "node"))
+            {
+                ImportCOLLADABone(childBoneNode, index, bones, transform, isBiped);
+            }
+        }
+
+        public static BHDFile ImportCOLLADASkeleton(string filename, Matrix transform)
+        {
+            XDocument doc = XDocument.Load(filename);
+            XNamespace ns = SCHEMA_URL;
+
+            XElement COLLADA = doc.Root;
+            XElement imagesLibrary = COLLADA.Element(ns + "library_images");
+            XElement materialsLibrary = COLLADA.Element(ns + "library_materials");
+            XElement effectsLibrary = COLLADA.Element(ns + "library_effects");
+            XElement geometryLibrary = COLLADA.Element(ns + "library_geometries");
+            XElement visualSceneLibrary = COLLADA.Element(ns + "library_visual_scenes");
+            XElement controllerLibrary = COLLADA.Element(ns + "library_controllers");
+
+            XElement sceneElement = COLLADA.Element(ns + "scene");
+            XElement visualSceneInstance = sceneElement.Element(ns + "instance_visual_scene");
+            XElement visualScene = FindElementByReference(visualSceneLibrary, ns + "visual_scene", visualSceneInstance.Attribute("url").Value);
+
+            XElement rootBone = visualScene.Elements(ns + "node").First(el => el.Attribute("type").Value == "JOINT");
+            bool isBiped = rootBone.Attribute("name").Value == BHDFile.BipedBoneNames[0];
+            BHDFile.Bone[] bones = new BHDFile.Bone[isBiped ? BHDFile.BipedBoneNames.Length : BHDFile.NonBipedBoneNames.Length];
+            ImportCOLLADABone(rootBone, 0, bones, transform, isBiped);
+
+            BHDFile result = new BHDFile();
+            int lastIndex = 0;
+            for (int i = bones.Length - 1; i >= 0; i--)
+            {
+                if (bones[i] != null)
+                {
+                    lastIndex = i;
+                    break;
+                }
+            }
+            for (int i = 0; i <= lastIndex; i++)
+            {
+                if (bones[i] != null)
+                {
+                    result.Bones.Add(bones[i]);
+                }
+                else
+                {
+                    result.Bones.Add(new BHDFile.Bone() { ParentIndex = 0xFFFFFFFF, Transform = new Matrix(float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, 0.0f, 0.0f, 0.0f, 1.0f) });
+                }
+            }
             return result;
         }
 
@@ -1031,6 +1107,14 @@ namespace LOMNTool.Collada
                                     else if (name == BHDFile.NonBipedBoneNames[0])
                                     {
                                         bhd.NameSlots = BHDFile.NonBipedBoneNames;
+                                    }
+                                    else if (BHDFile.NonBipedBoneNames.Contains(name))
+                                    {
+                                        bhd.NameSlots = BHDFile.NonBipedBoneNames;
+                                    }
+                                    else if (BHDFile.BipedBoneNames.Contains(name))
+                                    {
+                                        bhd.NameSlots = BHDFile.BipedBoneNames;
                                     }
                                     else
                                     {

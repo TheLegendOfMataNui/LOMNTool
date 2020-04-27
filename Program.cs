@@ -10,25 +10,7 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"D:\Program Files\LEGO Bionicle\data\characters\onua\Xs\onua.dae";
-        //public const string TestFile = @"D:\User Inforamtion\Desktop\B Data\Data\characters\onua\Xs\onua.x";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\main.bcl.obj";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main Omega.bcl.obj";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Watr2.bcl.obj";
-        //public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Bech\Bcls\Main.ocl";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\COLLADA Test\conversion\Main.x";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Main.obj";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\COLLADA Test\conversion\Main.x";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Edited_files\Edited files\Mskc.obj";
-        //public const string TestFile = @"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Bech\Xs\Plnt_backup.x";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Plnt_backup - Copy.x";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\Plnt_backup.x";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\TremorColored.obj";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\TremorColored.x";
-        //@"C:\Program Files (x86)\LEGO Bionicle\Data\characters\ssss\Xs\ssss.x";
-        //@"C:\Program Files (x86)\LEGO Bionicle\Data\characters\kopa\Xs\swrd.x";
-        //@"C:\Program Files (x86)\LEGO Bionicle\Data\Levels\Lev1\Vllg\Xs\Main.x";
-        //public const string TestFile = @"C:\Users\Admin\Desktop\Modding\Bionicle\Sample Files\onua.x";
+        public const string TestFile = @"E:\Projects\Modding\Bionicle\Sample Files\Skeleton Import\chat.dae";
 
         public static INIConfig Config;
 
@@ -82,6 +64,10 @@ namespace LOMNTool
                     {
                         BCLOBJFile(arg);
                     }
+                    else if (arg.EndsWith(".bhd.dae"))
+                    {
+                        BHDDAEFile(arg);
+                    }
                     else if (extension == ".x")
                     {
                         XFile(arg);
@@ -101,6 +87,10 @@ namespace LOMNTool
                     else if (extension == ".dae")
                     {
                         DAEFile(arg);
+                    }
+                    else if (extension == ".bhd")
+                    {
+                        BHDFile(arg);
                     }
                     else
                     {
@@ -141,6 +131,11 @@ namespace LOMNTool
                     {
                         Console.WriteLine("    Reading BHD...");
                         bhd = new BHDFile(Path.ChangeExtension(arg, ".bhd"));
+                    }
+                    if (bhd == null)
+                    {
+                        Console.WriteLine("[ERROR]: No BHD file with matching name! Aborting.");
+                        throw new Exception();
                     }
                     Console.WriteLine("    Writing DAE file...");
                     bool stripUnusedMaterials = Config.GetValueOrDefault("DAE", "StripUnusedMaterials", "False").ToLower() == "true";
@@ -223,6 +218,30 @@ namespace LOMNTool
             using (BinaryWriter writer = new BinaryWriter(stream))
             {
                 file.Write(writer);
+            }
+        }
+
+        public static void BHDDAEFile(string arg)
+        {
+            BHDFile file = Collada.Utils.ImportCOLLADASkeleton(arg, SharpDX.Matrix.RotationY(-SharpDX.MathUtil.PiOverTwo));
+            file.Write(arg.Replace(".dae", ""));
+        }
+
+        public static void BHDFile(string arg)
+        {
+            BHDFile file = new BHDFile(arg);
+
+            using (System.IO.StreamWriter writer = new StreamWriter(arg + ".txt"))
+            {
+                writer.WriteLine("[WARNING]: Assuming Biped bone names.");
+                foreach (BHDFile.Bone bone in file.Bones)
+                {
+                    writer.WriteLine("Bone " + bone.Index + " (" + LOMNTool.BHDFile.BipedBoneNames[bone.Index] + ") (parent: " + bone.ParentIndex + "):");
+                    writer.WriteLine("  " + bone.Transform.Row1);
+                    writer.WriteLine("  " + bone.Transform.Row2);
+                    writer.WriteLine("  " + bone.Transform.Row3);
+                    writer.WriteLine("  " + bone.Transform.Row4);
+                }
             }
         }
     }
