@@ -10,7 +10,7 @@ namespace LOMNTool
 {
     public class Program
     {
-        public const string TestFile = @"E:\Projects\Modding\Bionicle\Sample Files\Skeleton Import\chat.dae";
+        public const string TestFile = @"E:\Projects\Modding\Bionicle\Sample Files\Main.x";
 
         public static INIConfig Config;
 
@@ -132,11 +132,11 @@ namespace LOMNTool
                         Console.WriteLine("    Reading BHD...");
                         bhd = new BHDFile(Path.ChangeExtension(arg, ".bhd"));
                     }
-                    if (bhd == null)
+                    /*if (bhd == null)
                     {
                         Console.WriteLine("[ERROR]: No BHD file with matching name! Aborting.");
                         throw new Exception();
-                    }
+                    }*/
                     Console.WriteLine("    Writing DAE file...");
                     bool stripUnusedMaterials = Config.GetValueOrDefault("DAE", "StripUnusedMaterials", "False").ToLower() == "true";
                     Collada.Utils.ExportCOLLADA(file, bhd, Path.ChangeExtension(arg, ".dae"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds", stripUnusedMaterials);
