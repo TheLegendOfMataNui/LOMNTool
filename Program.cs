@@ -282,7 +282,9 @@ namespace LOMNTool
                     }
                     else
                     {
-                        outputPath = Path.Combine(dir, $"{baseName}_{key}.x");
+                        // Exclude the "_morph_" string and just append the target number
+                        string targetNum = key.Replace("morph_", "");
+                        outputPath = Path.Combine(dir, $"{baseName}{targetNum}.x");
                     }
                 }
 
