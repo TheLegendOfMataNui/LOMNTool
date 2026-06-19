@@ -23,14 +23,25 @@ namespace LOMNTool.GLTF
             transform = Matrix.Identity;
             var model = ModelRoot.Load(filename);
             var results = new Dictionary<string, XFile>();
-            bhdOut = null;
-
-            if (model.LogicalMeshes.Count == 0) return results;
 
             if (model.LogicalSkins.Count > 0)
             {
-                bhdOut = ExtractSkeleton(model);
+                bool hasSrp = model.LogicalNodes.Any(n => n.Name != null && n.Name.StartsWith("SRP_"));
+                if (hasSrp)
+                {
+                    bhdOut = ExtractHybridSkeleton(model);
+                }
+                else
+                {
+                    bhdOut = ExtractSkeleton(model);
+                }
             }
+            else
+            {
+                bhdOut = null;
+            }
+
+            if (model.LogicalMeshes.Count == 0) return results;
 
             // Grab every node that contains a distinct mesh object
             var meshNodes = model.LogicalNodes.Where(n => n.Mesh != null).ToList();
@@ -54,12 +65,10 @@ namespace LOMNTool.GLTF
 
                 if (bhdOut != null)
                 {
-                    string[] namePool = bhdOut.NameSlots;
-                    var rootNodes = model.LogicalNodes.Where(n => namePool.Contains(n.Name) && (n.VisualParent == null || !namePool.Contains(n.VisualParent.Name))).ToList();
-
-                    foreach (var rootNode in rootNodes)
+                    var rootBones = bhdOut.Bones.Where(b => b.ParentIndex == 0xFFFFFFFF || b.ParentIndex == b.Index).ToList();
+                    foreach (var rootBone in rootBones)
                     {
-                        frameObject.Children.Add(new XChildObject(BuildFrameHierarchy(rootNode, namePool), false));
+                        frameObject.Children.Add(new XChildObject(BuildFrameHierarchyFromBHD(rootBone.Index, bhdOut), false));
                     }
                 }
 
@@ -100,7 +109,23 @@ namespace LOMNTool.GLTF
 
             var model = ModelRoot.Load(filename);
             XFile result = new XFile(new XHeader());
-            bhdOut = null;
+
+            if (model.LogicalSkins.Count > 0)
+            {
+                bool hasSrp = model.LogicalNodes.Any(n => n.Name != null && n.Name.StartsWith("SRP_"));
+                if (hasSrp)
+                {
+                    bhdOut = ExtractHybridSkeleton(model);
+                }
+                else
+                {
+                    bhdOut = ExtractSkeleton(model);
+                }
+            }
+            else
+            {
+                bhdOut = null;
+            }
 
             result.Templates.Add(XReader.NativeTemplates["XSkinMeshHeader"]);
             result.Templates.Add(XReader.NativeTemplates["VertexDuplicationIndices"]);
@@ -116,16 +141,12 @@ namespace LOMNTool.GLTF
 
             frameObject.Children.Add(new XChildObject(frameTransformObject, false));
 
-            if (model.LogicalSkins.Count > 0)
+            if (bhdOut != null)
             {
-                bhdOut = ExtractSkeleton(model);
-
-                string[] namePool = bhdOut.NameSlots;
-                var rootNodes = model.LogicalNodes.Where(n => namePool.Contains(n.Name) && (n.VisualParent == null || !namePool.Contains(n.VisualParent.Name))).ToList();
-
-                foreach (var rootNode in rootNodes)
+                var rootBones = bhdOut.Bones.Where(b => b.ParentIndex == 0xFFFFFFFF || b.ParentIndex == b.Index).ToList();
+                foreach (var rootBone in rootBones)
                 {
-                    frameObject.Children.Add(new XChildObject(BuildFrameHierarchy(rootNode, namePool), false));
+                    frameObject.Children.Add(new XChildObject(BuildFrameHierarchyFromBHD(rootBone.Index, bhdOut), false));
                 }
             }
 
@@ -145,15 +166,25 @@ namespace LOMNTool.GLTF
             transform = Matrix.Identity;
             var model = ModelRoot.Load(filename);
             var results = new Dictionary<string, XFile>();
-            bhdOut = null;
 
-            if (model.LogicalMeshes.Count == 0) return results;
-
-            // Generate skeleton structure once
             if (model.LogicalSkins.Count > 0)
             {
-                bhdOut = ExtractSkeleton(model);
+                bool hasSrp = model.LogicalNodes.Any(n => n.Name != null && n.Name.StartsWith("SRP_"));
+                if (hasSrp)
+                {
+                    bhdOut = ExtractHybridSkeleton(model);
+                }
+                else
+                {
+                    bhdOut = ExtractSkeleton(model);
+                }
             }
+            else
+            {
+                bhdOut = null;
+            }
+
+            if (model.LogicalMeshes.Count == 0) return results;
 
             // Determine max morph targets available in the primary mesh using MorphTargetsCount
             var gltfMesh = model.LogicalMeshes[0];
@@ -194,12 +225,10 @@ namespace LOMNTool.GLTF
 
             if (bhdOut != null)
             {
-                string[] namePool = bhdOut.NameSlots;
-                var rootNodes = model.LogicalNodes.Where(n => namePool.Contains(n.Name) && (n.VisualParent == null || !namePool.Contains(n.VisualParent.Name))).ToList();
-
-                foreach (var rootNode in rootNodes)
+                var rootBones = bhdOut.Bones.Where(b => b.ParentIndex == 0xFFFFFFFF || b.ParentIndex == b.Index).ToList();
+                foreach (var rootBone in rootBones)
                 {
-                    frameObject.Children.Add(new XChildObject(BuildFrameHierarchy(rootNode, namePool), false));
+                    frameObject.Children.Add(new XChildObject(BuildFrameHierarchyFromBHD(rootBone.Index, bhdOut), false));
                 }
             }
 
@@ -213,29 +242,201 @@ namespace LOMNTool.GLTF
             return result;
         }
 
-        private static XObject BuildFrameHierarchy(Node node, string[] namePool)
+        // HYBRID SKELETON MERGE: Takes custom translations/lengths from Blender, but enforces Reference Rotations
+        private static BHDFile ExtractHybridSkeleton(ModelRoot model)
         {
-            XObject frame = new XObject(new XToken(XToken.TokenID.NAME) { NameData = "Frame" }, node.Name);
+            BHDFile bhd = new BHDFile();
+
+            bool isBiped = false;
+            foreach (var node in model.LogicalNodes)
+            {
+                if (BHDFile.BipedBoneNames.Contains(node.Name)) { isBiped = true; break; }
+            }
+
+            List<string> dynamicNamePool = new List<string>(isBiped ? BHDFile.BipedBoneNames : BHDFile.NonBipedBoneNames);
+
+            if (model.LogicalSkins.Count > 0)
+            {
+                foreach (var joint in model.LogicalSkins[0].Joints)
+                {
+                    if (!dynamicNamePool.Contains(joint.Name) && !string.IsNullOrWhiteSpace(joint.Name))
+                    {
+                        dynamicNamePool.Add(joint.Name);
+                    }
+                }
+            }
+
+            string[] namePool = dynamicNamePool.ToArray();
+            bhd.NameSlots = namePool;
+
+            BHDFile.Bone[] bones = new BHDFile.Bone[namePool.Length];
+            Dictionary<Node, uint> nodeToIndex = new Dictionary<Node, uint>();
+
+            // Find the master armature node to bypass any object-level transforms applied in Blender
+            Node armatureNode = null;
+            foreach (var node in model.LogicalNodes)
+            {
+                if (Array.IndexOf(namePool, node.Name) != -1)
+                {
+                    if (node.VisualParent != null && Array.IndexOf(namePool, node.VisualParent.Name) == -1)
+                    {
+                        armatureNode = node.VisualParent;
+                        break;
+                    }
+                }
+            }
+
+            System.Numerics.Matrix4x4 armatureInverse = System.Numerics.Matrix4x4.Identity;
+            if (armatureNode != null)
+            {
+                System.Numerics.Matrix4x4.Invert(armatureNode.WorldMatrix, out armatureInverse);
+            }
+
+            // Extract the embedded Saffire Rest Pose data from the GLB
+            Dictionary<string, Matrix> embeddedSrp = new Dictionary<string, Matrix>();
+            foreach (var node in model.LogicalNodes)
+            {
+                if (node.Name != null && node.Name.StartsWith("SRP_"))
+                {
+                    string boneName = node.Name.Substring(4);
+                    System.Numerics.Matrix4x4 numMat = node.LocalMatrix;
+                    Matrix dxTransform = new Matrix(
+                        numMat.M11, numMat.M12, numMat.M13, numMat.M14,
+                        numMat.M21, numMat.M22, numMat.M23, numMat.M24,
+                        numMat.M31, numMat.M32, numMat.M33, numMat.M34,
+                        numMat.M41, numMat.M42, numMat.M43, numMat.M44);
+                    embeddedSrp[boneName] = dxTransform;
+                }
+            }
+
+            Dictionary<string, Matrix> newWorldMatrices = new Dictionary<string, Matrix>();
+
+            // Sort nodes hierarchically (parents must be processed before children)
+            var sortedNodes = model.LogicalNodes.Where(n => Array.IndexOf(namePool, n.Name) != -1).ToList();
+            sortedNodes.Sort((a, b) => {
+                int depthA = 0; var currA = a; while (currA != null) { depthA++; currA = currA.VisualParent; }
+                int depthB = 0; var currB = b; while (currB != null) { depthB++; currB = currB.VisualParent; }
+                return depthA.CompareTo(depthB);
+            });
+
+            foreach (var node in sortedNodes)
+            {
+                int index = Array.IndexOf(namePool, node.Name);
+                nodeToIndex[node] = (uint)index;
+
+                BHDFile.Bone b = new BHDFile.Bone();
+                b.Index = (uint)index;
+
+                // 1. Get the absolute real-world position of this joint from Blender
+                System.Numerics.Matrix4x4 armSpaceMat = node.WorldMatrix * armatureInverse;
+                Vector3 targetPos = new Vector3(armSpaceMat.Translation.X, armSpaceMat.Translation.Y, armSpaceMat.Translation.Z);
+
+                // 2. Fetch the preserved Saffire joint rotation from the embedded SRP
+                Matrix refLocalDx = Matrix.Identity;
+                bool hasRef = false;
+
+                if (embeddedSrp.ContainsKey(node.Name))
+                {
+                    refLocalDx = embeddedSrp[node.Name];
+                    hasRef = true;
+                }
+
+                if (!hasRef)
+                {
+                    // Fallback for custom user bones added in Blender
+                    System.Numerics.Matrix4x4 numMat = node.LocalMatrix;
+                    refLocalDx = new Matrix(
+                        numMat.M11, numMat.M12, numMat.M13, numMat.M14,
+                        numMat.M21, numMat.M22, numMat.M23, numMat.M24,
+                        numMat.M31, numMat.M32, numMat.M33, numMat.M34,
+                        numMat.M41, numMat.M42, numMat.M43, numMat.M44);
+                }
+
+                // Isolate pure rotation
+                Matrix localRot = refLocalDx;
+                localRot.M41 = 0; localRot.M42 = 0; localRot.M43 = 0;
+
+                Vector3 localTrans;
+                Matrix parentNewWorld = Matrix.Identity;
+
+                if (node.VisualParent != null && nodeToIndex.ContainsKey(node.VisualParent))
+                {
+                    string parentName = node.VisualParent.Name;
+                    if (newWorldMatrices.ContainsKey(parentName))
+                    {
+                        parentNewWorld = newWorldMatrices[parentName];
+                    }
+                }
+
+                // 3. Transform the absolute blender position into the parent's pristine original coordinate space
+                Matrix invParentWorld = Matrix.Invert(parentNewWorld);
+                Vector4 localPos4 = Vector3.Transform(targetPos, invParentWorld);
+                localTrans = new Vector3(localPos4.X, localPos4.Y, localPos4.Z);
+
+                // 4. Construct the final Hybrid Local Matrix
+                Matrix newLocalDx = localRot;
+                newLocalDx.M41 = localTrans.X;
+                newLocalDx.M42 = localTrans.Y;
+                newLocalDx.M43 = localTrans.Z;
+
+                newWorldMatrices[node.Name] = newLocalDx * parentNewWorld;
+
+                b.Transform = ConvertToBhdMatrix(newLocalDx);
+                bones[index] = b;
+            }
+
+            foreach (var node in sortedNodes)
+            {
+                uint myIndex = nodeToIndex[node];
+                if (node.VisualParent != null && nodeToIndex.ContainsKey(node.VisualParent))
+                {
+                    bones[myIndex].ParentIndex = nodeToIndex[node.VisualParent];
+                }
+                else
+                {
+                    bones[myIndex].ParentIndex = (myIndex == 0) ? myIndex : 0xFFFFFFFF;
+                }
+            }
+
+            for (int i = 0; i < bones.Length; i++)
+            {
+                if (bones[i] != null)
+                {
+                    bhd.Bones.Add(bones[i]);
+                }
+                else
+                {
+                    bhd.Bones.Add(new BHDFile.Bone() { Index = (uint)i, ParentIndex = 0xFFFFFFFF, Transform = new Matrix(float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, float.NaN, 0.0f, 0.0f, 0.0f, 1.0f) });
+                }
+            }
+
+            return bhd;
+        }
+
+        // PRISTINE SKELETON BUILDER: Bypasses GLTF nodes entirely and builds frames purely from Saffire BHD math
+        private static XObject BuildFrameHierarchyFromBHD(uint boneIndex, BHDFile bhd)
+        {
+            string name = bhd.NameSlots[boneIndex];
+            XObject frame = new XObject(new XToken(XToken.TokenID.NAME) { NameData = "Frame" }, name);
             XObject frameTransform = new XObject(new XToken(XToken.TokenID.NAME) { NameData = "FrameTransformMatrix" });
 
-            System.Numerics.Matrix4x4 numMat = node.LocalMatrix;
+            Matrix m = bhd.Bones[(int)boneIndex].Transform;
+            Matrix dxMat = ConvertToRowMajor(m);
 
             frameTransform.Members.Add(new XObjectMember("frameMatrix", new XToken(XToken.TokenID.NAME) { NameData = "Matrix4x4" },
                 new XObjectStructure(XReader.NativeTemplates["Matrix4x4"],
                 new XObjectMember("matrix", new XToken(XToken.TokenID.FLOAT),
-                numMat.M11, numMat.M12, numMat.M13, numMat.M14,
-                numMat.M21, numMat.M22, numMat.M23, numMat.M24,
-                numMat.M31, numMat.M32, numMat.M33, numMat.M34,
-                numMat.M41, numMat.M42, numMat.M43, numMat.M44))));
+                dxMat.M11, dxMat.M12, dxMat.M13, dxMat.M14,
+                dxMat.M21, dxMat.M22, dxMat.M23, dxMat.M24,
+                dxMat.M31, dxMat.M32, dxMat.M33, dxMat.M34,
+                dxMat.M41, dxMat.M42, dxMat.M43, dxMat.M44))));
 
             frame.Children.Add(new XChildObject(frameTransform, false));
 
-            foreach (var child in node.VisualChildren)
+            var children = bhd.Bones.Where(b => b.ParentIndex == boneIndex && b.Index != boneIndex).ToList();
+            foreach (var child in children)
             {
-                if (namePool.Contains(child.Name))
-                {
-                    frame.Children.Add(new XChildObject(BuildFrameHierarchy(child, namePool), false));
-                }
+                frame.Children.Add(new XChildObject(BuildFrameHierarchyFromBHD(child.Index, bhd), false));
             }
 
             return frame;
@@ -251,7 +452,22 @@ namespace LOMNTool.GLTF
                 if (BHDFile.BipedBoneNames.Contains(node.Name)) { isBiped = true; break; }
             }
 
-            string[] namePool = isBiped ? BHDFile.BipedBoneNames : BHDFile.NonBipedBoneNames;
+            // Start with the default names to preserve base engine indices
+            List<string> dynamicNamePool = new List<string>(isBiped ? BHDFile.BipedBoneNames : BHDFile.NonBipedBoneNames);
+
+            // UPGRADE: Detect any brand new custom bones added in Blender and append them
+            if (model.LogicalSkins.Count > 0)
+            {
+                foreach (var joint in model.LogicalSkins[0].Joints)
+                {
+                    if (!dynamicNamePool.Contains(joint.Name) && !string.IsNullOrWhiteSpace(joint.Name))
+                    {
+                        dynamicNamePool.Add(joint.Name);
+                    }
+                }
+            }
+
+            string[] namePool = dynamicNamePool.ToArray();
             bhd.NameSlots = namePool;
 
             BHDFile.Bone[] bones = new BHDFile.Bone[namePool.Length];

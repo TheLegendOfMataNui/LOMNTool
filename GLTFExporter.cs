@@ -49,6 +49,10 @@ namespace LOMNTool.GLTF
                 var masterSkeletonRoot = new NodeBuilder(combinedName + "_Root");
                 scene.AddNode(masterSkeletonRoot);
 
+                // EMBED: Inject invisible "SaffireRestPoseData" block to make the GLB fully standalone
+                var srpRoot = new NodeBuilder(combinedName + "_SaffireRestPoseData");
+                scene.AddNode(srpRoot);
+
                 for (int i = 0; i < bhd.Bones.Count; i++)
                 {
                     if (bhd.Bones[i].ParentIndex != 0xFFFFFFFF && bhd.Bones[i].ParentIndex != i)
@@ -59,6 +63,11 @@ namespace LOMNTool.GLTF
                     {
                         masterSkeletonRoot.AddNode(gltfNodes[i]);
                     }
+
+                    // Duplicate the pure rest matrix into a hidden node
+                    var srpNode = new NodeBuilder("SRP_" + nameSlots[i]);
+                    srpNode.LocalTransform = ConvertBhdMatrix(bhd.Bones[i].Transform);
+                    srpRoot.AddNode(srpNode);
                 }
             }
 
@@ -128,6 +137,10 @@ namespace LOMNTool.GLTF
             var masterSkeletonRoot = new NodeBuilder(baseName + "_Root");
             scene.AddNode(masterSkeletonRoot);
 
+            // EMBED: Inject invisible "SaffireRestPoseData" block to make the GLB fully standalone
+            var srpRoot = new NodeBuilder(baseName + "_SaffireRestPoseData");
+            scene.AddNode(srpRoot);
+
             for (int i = 0; i < bhd.Bones.Count; i++)
             {
                 if (bhd.Bones[i].ParentIndex != 0xFFFFFFFF && bhd.Bones[i].ParentIndex != i)
@@ -138,6 +151,11 @@ namespace LOMNTool.GLTF
                 {
                     masterSkeletonRoot.AddNode(gltfNodes[i]);
                 }
+
+                // Duplicate the pure rest matrix into a hidden node
+                var srpNode = new NodeBuilder("SRP_" + nameSlots[i]);
+                srpNode.LocalTransform = ConvertBhdMatrix(bhd.Bones[i].Transform);
+                srpRoot.AddNode(srpNode);
             }
 
             ParseMeshes(xFile, null, meshBuilder, gltfNodes);

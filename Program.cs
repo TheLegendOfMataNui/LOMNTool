@@ -334,14 +334,16 @@ namespace LOMNTool
                 }
             }
 
-            BHDFile bhd;
+            BHDFile bhdOut;
             string dir = Path.GetDirectoryName(arg);
             string baseName = Path.GetFileNameWithoutExtension(arg);
+
+            Console.WriteLine($"    [Auto-Merge] Looking for embedded Saffire Rest Pose (SRP) data inside the GLB...");
 
             if (splitObjects)
             {
                 Console.WriteLine("    Importing and splitting GLTF objects...");
-                var splitFiles = LOMNTool.GLTF.GLTFImporter.ImportSplitMeshes(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), out bhd);
+                var splitFiles = LOMNTool.GLTF.GLTFImporter.ImportSplitMeshes(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), out bhdOut);
 
                 foreach (var kvp in splitFiles)
                 {
@@ -359,7 +361,7 @@ namespace LOMNTool
             {
                 Console.WriteLine("    Importing GLTF file (checking for morph sequences)...");
 
-                Dictionary<string, XFile> frames = LOMNTool.GLTF.GLTFImporter.ImportMorphSequence(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), out bhd);
+                Dictionary<string, XFile> frames = LOMNTool.GLTF.GLTFImporter.ImportMorphSequence(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), out bhdOut);
 
                 // Sequence Detection: Find trailing numbers in the filename (e.g. "rkm1")
                 string prefix = baseName;
@@ -420,11 +422,11 @@ namespace LOMNTool
                 }
             }
 
-            // 2. Save the Skeleton file if one was extracted (Applies to both standard and split paths)
-            if (bhd != null && bhd.Bones.Count > 0)
+            // 2. Save the Skeleton file. Because of the Hybrid merge, this safely overwrites the BHD with new lengths while keeping original rotations!
+            if (bhdOut != null && bhdOut.Bones.Count > 0)
             {
                 string bhdPath = Path.Combine(dir, baseName + ".bhd");
-                bhd.Write(bhdPath);
+                bhdOut.Write(bhdPath);
                 Console.WriteLine("    Successfully wrote " + bhdPath);
             }
         }
@@ -451,21 +453,6 @@ namespace LOMNTool
                     writer.WriteLine("  " + bone.Transform.Row4);
                 }
             }
-        }
-
-        public static void ExportToGLTF(string arg, string sharedBhdPath = null)
-        {
-            D3DX.Mesh.XFile xFile = new D3DX.Mesh.XFile(new System.IO.BinaryReader(System.IO.File.OpenRead(arg)));
-
-            BHDFile bhd = null;
-            string targetBhd = sharedBhdPath ?? Path.ChangeExtension(arg, ".bhd");
-            if (System.IO.File.Exists(targetBhd))
-                bhd = new BHDFile(targetBhd);
-
-            // CHANGED: .gltf to .glb
-            LOMNTool.GLTF.GLTFExporter.Export(xFile, bhd, Path.ChangeExtension(arg, ".glb"));
-
-            Console.WriteLine("Exported GLB successfully!");
         }
     }
 }
