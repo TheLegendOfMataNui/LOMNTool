@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
 using SharpGLTF.Schema2;
 using D3DX.Mesh;
 using SharpDX;
@@ -9,6 +10,89 @@ namespace LOMNTool.GLTF
 {
     public static class GLTFImporter
     {
+        // PEEK FUNCTION: Checks how many valid meshes exist in the file before fully importing
+        public static int GetMeshNodeCount(string filename)
+        {
+            var model = ModelRoot.Load(filename);
+            return model.LogicalNodes.Count(n => n.Mesh != null);
+        }
+
+        // BATCH IMPORT: Extracts every single mesh as a distinct, individually named XFile
+        public static Dictionary<string, XFile> ImportSplitMeshes(string filename, Matrix transform, out BHDFile bhdOut)
+        {
+            transform = Matrix.Identity;
+            var model = ModelRoot.Load(filename);
+            var results = new Dictionary<string, XFile>();
+            bhdOut = null;
+
+            if (model.LogicalMeshes.Count == 0) return results;
+
+            if (model.LogicalSkins.Count > 0)
+            {
+                bhdOut = ExtractSkeleton(model);
+            }
+
+            // Grab every node that contains a distinct mesh object
+            var meshNodes = model.LogicalNodes.Where(n => n.Mesh != null).ToList();
+
+            foreach (var node in meshNodes)
+            {
+                XFile result = new XFile(new XHeader());
+                result.Templates.Add(XReader.NativeTemplates["XSkinMeshHeader"]);
+                result.Templates.Add(XReader.NativeTemplates["VertexDuplicationIndices"]);
+                result.Templates.Add(XReader.NativeTemplates["SkinWeights"]);
+
+                XObject frameObject = new XObject(new XToken(XToken.TokenID.NAME) { NameData = "Frame" }, "Root");
+                XObject frameTransformObject = new XObject(new XToken(XToken.TokenID.NAME) { NameData = "FrameTransformMatrix" });
+
+                frameTransformObject.Members.Add(new XObjectMember("frameMatrix", new XToken(XToken.TokenID.NAME) { NameData = "Matrix4x4" },
+                    new XObjectStructure(XReader.NativeTemplates["Matrix4x4"],
+                    new XObjectMember("matrix", new XToken(XToken.TokenID.FLOAT),
+                    1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f))));
+
+                frameObject.Children.Add(new XChildObject(frameTransformObject, false));
+
+                if (bhdOut != null)
+                {
+                    string[] namePool = bhdOut.NameSlots;
+                    var rootNodes = model.LogicalNodes.Where(n => namePool.Contains(n.Name) && (n.VisualParent == null || !namePool.Contains(n.VisualParent.Name))).ToList();
+
+                    foreach (var rootNode in rootNodes)
+                    {
+                        frameObject.Children.Add(new XChildObject(BuildFrameHierarchy(rootNode, namePool), false));
+                    }
+                }
+
+                // Extract only this specific mesh node
+                XObject meshObj = ExtractMesh(node.Mesh, transform, model.LogicalSkins.FirstOrDefault(), bhdOut, model, -1);
+                frameObject.Children.Add(new XChildObject(meshObj, false));
+                result.Objects.Add(frameObject);
+
+                // Establish the file name using the node or mesh name
+                string safeName = string.IsNullOrWhiteSpace(node.Name) ? node.Mesh.Name : node.Name;
+                if (string.IsNullOrWhiteSpace(safeName)) safeName = $"Mesh_{meshNodes.IndexOf(node)}";
+
+                // Ensure no illegal characters cause IO crash during file generation
+                foreach (char c in Path.GetInvalidFileNameChars())
+                {
+                    safeName = safeName.Replace(c.ToString(), "");
+                }
+
+                // Ensure unique dictionary keys if there are multiple objects with the same name
+                string finalName = safeName;
+                int suffix = 1;
+                while (results.ContainsKey(finalName))
+                {
+                    finalName = $"{safeName}_{suffix}";
+                    suffix++;
+                }
+
+                results.Add(finalName, result);
+            }
+
+            return results;
+        }
+
         // STANDARD IMPORT: Maintains full compatibility with non-morphed objects
         public static XFile Import(string filename, Matrix transform, out BHDFile bhdOut)
         {

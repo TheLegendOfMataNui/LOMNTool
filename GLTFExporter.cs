@@ -27,25 +27,93 @@ namespace LOMNTool.GLTF
             }
         }
 
-        private static void ExportStatic(XFile xFile, string outputPath)
+        // BATCH EXPORT: Groups multiple XFiles and their distinct objects into a single GLTF scene
+        public static void ExportCombined(List<XFile> xFiles, List<string> names, BHDFile bhd, string outputPath)
         {
             var scene = new SceneBuilder();
-            var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexEmpty>("LOMN_Static");
+            NodeBuilder[] gltfNodes = null;
+            string combinedName = System.IO.Path.GetFileNameWithoutExtension(outputPath);
+
+            if (bhd != null)
+            {
+                string[] nameSlots = bhd.NameSlots ?? DeduceNameSlots(xFiles[0]);
+
+                gltfNodes = new NodeBuilder[bhd.Bones.Count];
+                for (int i = 0; i < bhd.Bones.Count; i++)
+                {
+                    gltfNodes[i] = new NodeBuilder(nameSlots[i]);
+                    gltfNodes[i].LocalTransform = ConvertBhdMatrix(bhd.Bones[i].Transform);
+                }
+
+                // Append _Root to prevent namespace collision with the mesh
+                var masterSkeletonRoot = new NodeBuilder(combinedName + "_Root");
+                scene.AddNode(masterSkeletonRoot);
+
+                for (int i = 0; i < bhd.Bones.Count; i++)
+                {
+                    if (bhd.Bones[i].ParentIndex != 0xFFFFFFFF && bhd.Bones[i].ParentIndex != i)
+                    {
+                        gltfNodes[bhd.Bones[i].ParentIndex].AddNode(gltfNodes[i]);
+                    }
+                    else
+                    {
+                        masterSkeletonRoot.AddNode(gltfNodes[i]);
+                    }
+                }
+            }
+
+            // Loop through all collected meshes and add them individually to the scene
+            for (int i = 0; i < xFiles.Count; i++)
+            {
+                var xFile = xFiles[i];
+                var baseName = names[i];
+
+                if (bhd != null)
+                {
+                    var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexJoints4>(baseName);
+                    ParseMeshes(xFile, null, meshBuilder, gltfNodes);
+                    scene.AddSkinnedMesh(meshBuilder, System.Numerics.Matrix4x4.Identity, gltfNodes);
+                }
+                else
+                {
+                    var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexEmpty>(baseName);
+                    ParseMeshes(xFile, meshBuilder, null, null);
+
+                    // Append _Root to static mesh parent nodes
+                    var rootNode = new NodeBuilder(baseName + "_Root");
+                    scene.AddNode(rootNode);
+                    scene.AddRigidMesh(meshBuilder, rootNode);
+                }
+            }
+
+            var model = scene.ToGltf2();
+            model.SaveGLB(outputPath); // CHANGED: SaveGLTF to SaveGLB
+        }
+
+        private static void ExportStatic(XFile xFile, string outputPath)
+        {
+            string baseName = System.IO.Path.GetFileNameWithoutExtension(outputPath);
+
+            var scene = new SceneBuilder();
+            var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexEmpty>(baseName);
 
             ParseMeshes(xFile, meshBuilder, null, null);
 
-            var rootNode = new NodeBuilder("Root");
+            // Append _Root to prevent namespace collision
+            var rootNode = new NodeBuilder(baseName + "_Root");
             scene.AddNode(rootNode);
             scene.AddRigidMesh(meshBuilder, rootNode);
 
             var model = scene.ToGltf2();
-            model.SaveGLTF(outputPath);
+            model.SaveGLB(outputPath); // CHANGED: SaveGLTF to SaveGLB
         }
 
         private static void ExportSkinned(XFile xFile, BHDFile bhd, string outputPath)
         {
+            string baseName = System.IO.Path.GetFileNameWithoutExtension(outputPath);
+
             var scene = new SceneBuilder();
-            var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexJoints4>("LOMN_Skinned");
+            var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexJoints4>(baseName);
 
             string[] nameSlots = bhd.NameSlots ?? DeduceNameSlots(xFile);
 
@@ -56,7 +124,8 @@ namespace LOMNTool.GLTF
                 gltfNodes[i].LocalTransform = ConvertBhdMatrix(bhd.Bones[i].Transform);
             }
 
-            var masterSkeletonRoot = new NodeBuilder("MasterSkeletonRoot");
+            // Append _Root to prevent namespace collision
+            var masterSkeletonRoot = new NodeBuilder(baseName + "_Root");
             scene.AddNode(masterSkeletonRoot);
 
             for (int i = 0; i < bhd.Bones.Count; i++)
@@ -76,7 +145,7 @@ namespace LOMNTool.GLTF
             scene.AddSkinnedMesh(meshBuilder, System.Numerics.Matrix4x4.Identity, gltfNodes);
 
             var model = scene.ToGltf2();
-            model.SaveGLTF(outputPath);
+            model.SaveGLB(outputPath); // CHANGED: SaveGLTF to SaveGLB
         }
 
         private static void ParseMeshes(XFile xFile, IMeshBuilder<MaterialBuilder> staticBuilder, IMeshBuilder<MaterialBuilder> skinnedBuilder, NodeBuilder[] skeletonNodes)
@@ -166,8 +235,6 @@ namespace LOMNTool.GLTF
                         int faceCount = (int)obj["nFaces"].Values[0];
                         var faces = obj["faces"].Values;
 
-                        // THE FIX: "First-Encounter Lock" to guarantee Morph Target Parity.
-                        // We lock exactly 1 normal index to each spatial vertex, preventing MeshBuilder from splitting them!
                         int[] lockedNormals = new int[vertexCount];
                         for (int i = 0; i < vertexCount; i++) lockedNormals[i] = -1;
 
@@ -211,7 +278,6 @@ namespace LOMNTool.GLTF
                                 int vIdx1 = (int)vIndices[v - 1];
                                 int vIdx2 = (int)vIndices[v];
 
-                                // Use the locked 1:1 Normal index rather than the face's custom normal
                                 int nIdx0 = lockedNormals[vIdx0] != -1 ? lockedNormals[vIdx0] : vIdx0;
                                 int nIdx1 = lockedNormals[vIdx1] != -1 ? lockedNormals[vIdx1] : vIdx1;
                                 int nIdx2 = lockedNormals[vIdx2] != -1 ? lockedNormals[vIdx2] : vIdx2;
@@ -292,7 +358,6 @@ namespace LOMNTool.GLTF
                 else if (child.Object.DataType.NameData == "MeshTextureCoords")
                 {
                     var texs = child.Object["textureCoords"].Values;
-                    // UVs are already inherently locked to vIndex in DX8
                     if (vIndex >= 0 && vIndex < texs.Count)
                     {
                         var t = (XObjectStructure)texs[vIndex];

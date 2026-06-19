@@ -53,6 +53,83 @@ namespace LOMNTool
                     }
                 }
 
+                // ==========================================
+                // QOL: SHARED SKELETON PRE-PASS & COMBINED EXPORT
+                // ==========================================
+                List<string> xFiles = args.Where(a => !a.StartsWith("-") && Path.GetExtension(a).ToLower() == ".x").ToList();
+                string sharedBhdPath = null;
+                bool combineGLTF = false;
+
+                if (xFiles.Count > 1)
+                {
+                    var potentialBhds = xFiles.Select(xf => Path.ChangeExtension(xf, ".bhd")).Where(File.Exists).Distinct().ToList();
+
+                    if (potentialBhds.Count > 0)
+                    {
+                        Console.Write($"\nFound skeleton '{Path.GetFileName(potentialBhds[0])}'. Apply this skeleton to ALL {xFiles.Count} .x files in this batch? (Y/N): ");
+                        var key = Console.ReadKey();
+                        Console.WriteLine("\n");
+
+                        if (key.Key == ConsoleKey.Y)
+                        {
+                            sharedBhdPath = potentialBhds[0];
+                        }
+                    }
+
+                    string modelFormat = Config.GetValueOrDefault("Models", "Format", "DAE").ToUpper();
+                    if (modelFormat == "GLTF")
+                    {
+                        Console.Write($"\nExport all {xFiles.Count} .x files into a SINGLE combined GLTF file? (Y/N): ");
+                        var keyCombine = Console.ReadKey();
+                        Console.WriteLine("\n");
+
+                        if (keyCombine.Key == ConsoleKey.Y)
+                        {
+                            combineGLTF = true;
+                        }
+                    }
+                }
+
+                if (combineGLTF)
+                {
+                    Console.WriteLine("    Writing Combined GLB file...");
+                    List<XFile> loadedXFiles = new List<XFile>();
+                    List<string> fileNames = new List<string>();
+                    BHDFile sharedBhd = null;
+                    string skeletonName = "CombinedModel";
+
+                    if (!string.IsNullOrEmpty(sharedBhdPath) && File.Exists(sharedBhdPath))
+                    {
+                        sharedBhd = new BHDFile(sharedBhdPath);
+                        skeletonName = Path.GetFileNameWithoutExtension(sharedBhdPath);
+                    }
+                    else
+                    {
+                        // Fallback if they skipped the shared skeleton prompt but want a combined file
+                        var potentialBhds = xFiles.Select(xf => Path.ChangeExtension(xf, ".bhd")).Where(File.Exists).Distinct().ToList();
+                        if (potentialBhds.Count > 0)
+                        {
+                            sharedBhd = new BHDFile(potentialBhds[0]);
+                            skeletonName = Path.GetFileNameWithoutExtension(potentialBhds[0]);
+                        }
+                    }
+
+                    foreach (string xPath in xFiles)
+                    {
+                        using (FileStream stream = new FileStream(xPath, FileMode.Open))
+                        using (BinaryReader reader = new BinaryReader(stream))
+                        {
+                            loadedXFiles.Add(new XFile(reader));
+                            fileNames.Add(Path.GetFileNameWithoutExtension(xPath));
+                        }
+                    }
+
+                    // CHANGED: .gltf to .glb
+                    string outPath = Path.Combine(Path.GetDirectoryName(xFiles[0]), skeletonName + ".glb");
+                    LOMNTool.GLTF.GLTFExporter.ExportCombined(loadedXFiles, fileNames, sharedBhd, outPath);
+                    Console.WriteLine("    Successfully wrote " + outPath);
+                }
+
                 // Process the files
                 foreach (string arg in args)
                 {
@@ -71,7 +148,10 @@ namespace LOMNTool
                         }
                         else if (extension == ".x")
                         {
-                            XFile(arg);
+                            if (combineGLTF) continue; // Skip individual export if we already grouped them!
+
+                            // Pass the shared skeleton down (if the user accepted the prompt)
+                            XFile(arg, sharedBhdPath);
                         }
                         else if (extension == ".obj")
                         {
@@ -115,7 +195,7 @@ namespace LOMNTool
             Config.Write(Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location), "LOMNTool.ini"));
         }
 
-        public static void XFile(string arg)
+        public static void XFile(string arg, string sharedBhdPath = null)
         {
             using (FileStream stream = new FileStream(arg, FileMode.Open))
             using (BinaryReader reader = new BinaryReader(stream))
@@ -132,10 +212,11 @@ namespace LOMNTool
                 else if (modelFormat == "DAE")
                 {
                     BHDFile bhd = null;
-                    if (File.Exists(Path.ChangeExtension(arg, ".bhd")))
+                    string targetBhd = sharedBhdPath ?? Path.ChangeExtension(arg, ".bhd");
+                    if (File.Exists(targetBhd))
                     {
-                        Console.WriteLine("    Reading BHD...");
-                        bhd = new BHDFile(Path.ChangeExtension(arg, ".bhd"));
+                        Console.WriteLine($"    Reading BHD ({Path.GetFileName(targetBhd)})...");
+                        bhd = new BHDFile(targetBhd);
                     }
                     Console.WriteLine("    Writing DAE file...");
                     bool stripUnusedMaterials = Config.GetValueOrDefault("DAE", "StripUnusedMaterials", "False").ToLower() == "true";
@@ -143,12 +224,17 @@ namespace LOMNTool
                 }
                 else if (modelFormat == "GLTF")
                 {
-                    Console.WriteLine("    Writing GLTF file...");
+                    Console.WriteLine("    Writing GLB file...");
                     BHDFile bhd = null;
-                    if (File.Exists(Path.ChangeExtension(arg, ".bhd")))
-                        bhd = new BHDFile(Path.ChangeExtension(arg, ".bhd"));
+                    string targetBhd = sharedBhdPath ?? Path.ChangeExtension(arg, ".bhd");
+                    if (File.Exists(targetBhd))
+                    {
+                        Console.WriteLine($"    Reading BHD ({Path.GetFileName(targetBhd)})...");
+                        bhd = new BHDFile(targetBhd);
+                    }
 
-                    LOMNTool.GLTF.GLTFExporter.Export(file, bhd, Path.ChangeExtension(arg, ".gltf"));
+                    // CHANGED: .gltf to .glb
+                    LOMNTool.GLTF.GLTFExporter.Export(file, bhd, Path.ChangeExtension(arg, ".glb"));
                 }
                 else if (modelFormat == "TXT")
                 {
@@ -232,73 +318,109 @@ namespace LOMNTool
 
         public static void GLTFFile(string arg)
         {
-            Console.WriteLine("    Importing GLTF file (checking for morph sequences)...");
+            Console.WriteLine("    Checking GLTF for multiple objects...");
+
+            int meshCount = LOMNTool.GLTF.GLTFImporter.GetMeshNodeCount(arg);
+            bool splitObjects = false;
+
+            if (meshCount > 1)
+            {
+                Console.Write($"\nFound {meshCount} distinct objects in this GLTF. Export each as a separate .x file? (Y/N): ");
+                var key = Console.ReadKey();
+                Console.WriteLine("\n");
+                if (key.Key == ConsoleKey.Y)
+                {
+                    splitObjects = true;
+                }
+            }
 
             BHDFile bhd;
-            Dictionary<string, XFile> frames = LOMNTool.GLTF.GLTFImporter.ImportMorphSequence(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), out bhd);
-
             string dir = Path.GetDirectoryName(arg);
             string baseName = Path.GetFileNameWithoutExtension(arg);
 
-            // Sequence Detection: Find trailing numbers in the filename (e.g. "rkm1")
-            string prefix = baseName;
-            string numStr = "";
-            int startNum = 0;
-
-            Match match = Regex.Match(baseName, @"(\d+)$");
-            if (match.Success)
+            if (splitObjects)
             {
-                prefix = baseName.Substring(0, match.Index);
-                numStr = match.Value;
-                startNum = int.Parse(numStr);
+                Console.WriteLine("    Importing and splitting GLTF objects...");
+                var splitFiles = LOMNTool.GLTF.GLTFImporter.ImportSplitMeshes(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), out bhd);
+
+                foreach (var kvp in splitFiles)
+                {
+                    // Create an individual .x file named exactly after the Blender object/mesh name
+                    string outputPath = Path.Combine(dir, $"{kvp.Key}.x");
+                    using (FileStream stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.Read))
+                    using (BinaryWriter writer = new BinaryWriter(stream))
+                    {
+                        kvp.Value.Write(writer);
+                    }
+                    Console.WriteLine("    Successfully wrote " + outputPath);
+                }
             }
-
-            int morphCounter = 0;
-
-            // Force "base" frame to process first, then sort morphs numerically
-            var orderedKeys = new List<string> { "base" };
-            var morphKeys = frames.Keys.Where(k => k.StartsWith("morph_"))
-                                       .OrderBy(k => int.Parse(k.Substring(6)));
-            orderedKeys.AddRange(morphKeys);
-
-            // 1. Save all generated geometry targets (.X files)
-            foreach (var key in orderedKeys)
+            else
             {
-                if (!frames.ContainsKey(key)) continue;
+                Console.WriteLine("    Importing GLTF file (checking for morph sequences)...");
 
-                string outputPath;
+                Dictionary<string, XFile> frames = LOMNTool.GLTF.GLTFImporter.ImportMorphSequence(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), out bhd);
+
+                // Sequence Detection: Find trailing numbers in the filename (e.g. "rkm1")
+                string prefix = baseName;
+                string numStr = "";
+                int startNum = 0;
+
+                Match match = Regex.Match(baseName, @"(\d+)$");
                 if (match.Success)
                 {
-                    // Formats the updated digit back using the original padding size (e.g. "01" -> "02")
-                    string formattedNum = (startNum + morphCounter).ToString(new string('0', numStr.Length));
-                    outputPath = Path.Combine(dir, prefix + formattedNum + ".x");
+                    prefix = baseName.Substring(0, match.Index);
+                    numStr = match.Value;
+                    startNum = int.Parse(numStr);
                 }
-                else
+
+                int morphCounter = 0;
+
+                // Force "base" frame to process first, then sort morphs numerically
+                var orderedKeys = new List<string> { "base" };
+                var morphKeys = frames.Keys.Where(k => k.StartsWith("morph_"))
+                                           .OrderBy(k => int.Parse(k.Substring(6)));
+                orderedKeys.AddRange(morphKeys);
+
+                // 1. Save all generated geometry targets (.X files)
+                foreach (var key in orderedKeys)
                 {
-                    // Fallback if no numeric sequence is found
-                    if (key == "base")
+                    if (!frames.ContainsKey(key)) continue;
+
+                    string outputPath;
+                    if (match.Success)
                     {
-                        outputPath = Path.Combine(dir, baseName + ".x");
+                        // Formats the updated digit back using the original padding size (e.g. "01" -> "02")
+                        string formattedNum = (startNum + morphCounter).ToString(new string('0', numStr.Length));
+                        outputPath = Path.Combine(dir, prefix + formattedNum + ".x");
                     }
                     else
                     {
-                        // Exclude the "_morph_" string and just append the target number
-                        string targetNum = key.Replace("morph_", "");
-                        outputPath = Path.Combine(dir, $"{baseName}{targetNum}.x");
+                        // Fallback if no numeric sequence is found
+                        if (key == "base")
+                        {
+                            outputPath = Path.Combine(dir, baseName + ".x");
+                        }
+                        else
+                        {
+                            // Exclude the "_morph_" string and just append the target number
+                            string targetNum = key.Replace("morph_", "");
+                            outputPath = Path.Combine(dir, $"{baseName}{targetNum}.x");
+                        }
                     }
-                }
 
-                using (FileStream stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.Read))
-                using (BinaryWriter writer = new BinaryWriter(stream))
-                {
-                    frames[key].Write(writer);
-                }
-                Console.WriteLine("    Successfully wrote " + outputPath);
+                    using (FileStream stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.Read))
+                    using (BinaryWriter writer = new BinaryWriter(stream))
+                    {
+                        frames[key].Write(writer);
+                    }
+                    Console.WriteLine("    Successfully wrote " + outputPath);
 
-                morphCounter++;
+                    morphCounter++;
+                }
             }
 
-            // 2. Save the Skeleton file if one was extracted
+            // 2. Save the Skeleton file if one was extracted (Applies to both standard and split paths)
             if (bhd != null && bhd.Bones.Count > 0)
             {
                 string bhdPath = Path.Combine(dir, baseName + ".bhd");
@@ -331,18 +453,19 @@ namespace LOMNTool
             }
         }
 
-        public static void ExportToGLTF(string arg)
+        public static void ExportToGLTF(string arg, string sharedBhdPath = null)
         {
             D3DX.Mesh.XFile xFile = new D3DX.Mesh.XFile(new System.IO.BinaryReader(System.IO.File.OpenRead(arg)));
 
             BHDFile bhd = null;
-            string bhdPath = Path.ChangeExtension(arg, ".bhd");
-            if (System.IO.File.Exists(bhdPath))
-                bhd = new BHDFile(bhdPath);
+            string targetBhd = sharedBhdPath ?? Path.ChangeExtension(arg, ".bhd");
+            if (System.IO.File.Exists(targetBhd))
+                bhd = new BHDFile(targetBhd);
 
-            LOMNTool.GLTF.GLTFExporter.Export(xFile, bhd, Path.ChangeExtension(arg, ".gltf"));
+            // CHANGED: .gltf to .glb
+            LOMNTool.GLTF.GLTFExporter.Export(xFile, bhd, Path.ChangeExtension(arg, ".glb"));
 
-            Console.WriteLine("Exported GLTF successfully!");
+            Console.WriteLine("Exported GLB successfully!");
         }
     }
 }
