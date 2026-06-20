@@ -19,27 +19,28 @@ TODO
      - [X] Reading
      - [X] Importing from OBJ
      - [X] Importing from COLLADA
+     - [X] Importing from GLTF
    - [X] Skinned
      - [X] Reading
      - [X] Importing from COLLADA
+     - [X] Importing from GLTF
    - [ ] Animated? I know LOMN doesn't store animation sequences in the .x files, but it might be useful to have.
  - [ ] BKD Animation
    - [ ] Reading (COLALDA export)
    - [ ] Writing (COLLADA import)
+   - [ ] Reading (GLTF export)
+   - [ ] Writing (GLTF import)
  - [ ] DDS Textures (just so people don't have to find an extra tool for them)
    - [ ] Reading (PNG export)
    - [ ] Writing (PNG import)
- - [ ] BHD reading / writing
+ - [X] BHD reading / writing
    - [X] Reading
-   - [ ] Writing
-   - [ ] Creating
+   - [X] Writing
+   - [X] Creating
  - [ ] CDX collision investigation
- - [ ] SLB investigation
- - [ ] OSI bytecode
-   - [ ] Decompiler
-   - [ ] Compiler
  - [ ] BCL meshes
    - [X] OBJ Export
    - [X] OBJ Import
    - [ ] DAE Import
+   - [ ] GLTF Import
  - [X] OCL collision
