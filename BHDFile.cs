@@ -243,10 +243,12 @@ namespace LOMNTool
                 uint count = reader.ReadUInt32();
                 for (uint i = 0; i < count; i++)
                 {
-                    Bone b = new Bone();
-                    b.ParentIndex = reader.ReadUInt32();
-                    b.Index = i;
-                    b.Transform = Matrix.Identity;
+                    Bone b = new Bone
+                    {
+                        ParentIndex = reader.ReadUInt32(),
+                        Index = i,
+                        Transform = Matrix.Identity
+                    };
                     Bones.Add(b);
                 }
                 for (int i = 0; i < count; i++)
