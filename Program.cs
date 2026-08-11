@@ -77,9 +77,9 @@ namespace LOMNTool
                     }
 
                     string modelFormat = Config.GetValueOrDefault("Models", "Format", "DAE").ToUpper();
-                    if (modelFormat == "GLTF")
+                    if (modelFormat == "GLB")
                     {
-                        Console.Write($"\nExport all {xFiles.Count} .x files into a SINGLE combined GLTF file? (Y/N): ");
+                        Console.Write($"\nExport all {xFiles.Count} .x files into a SINGLE combined GLB file? (Y/N): ");
                         var keyCombine = Console.ReadKey();
                         Console.WriteLine("\n");
 
@@ -222,9 +222,8 @@ namespace LOMNTool
                     bool stripUnusedMaterials = Config.GetValueOrDefault("DAE", "StripUnusedMaterials", "False").ToLower() == "true";
                     Collada.Utils.ExportCOLLADA(file, bhd, Path.ChangeExtension(arg, ".dae"), SharpDX.Matrix.RotationX(-SharpDX.MathUtil.PiOverTwo), true, ".dds", stripUnusedMaterials);
                 }
-                else if (modelFormat == "GLTF")
+                else if (modelFormat == "GLB")
                 {
-                    Console.WriteLine("    Writing GLB file...");
                     BHDFile bhd = null;
                     string targetBhd = sharedBhdPath ?? Path.ChangeExtension(arg, ".bhd");
                     if (File.Exists(targetBhd))
@@ -233,6 +232,7 @@ namespace LOMNTool
                         bhd = new BHDFile(targetBhd);
                     }
 
+                    Console.WriteLine("    Writing GLB file...");
                     // CHANGED: .gltf to .glb
                     LOMNTool.GLTF.GLTFExporter.Export(file, bhd, Path.ChangeExtension(arg, ".glb"));
                 }
@@ -318,14 +318,14 @@ namespace LOMNTool
 
         public static void GLTFFile(string arg)
         {
-            Console.WriteLine("    Checking GLTF for multiple objects...");
+            Console.WriteLine("    Checking GLB for multiple objects...");
 
             int meshCount = LOMNTool.GLTF.GLTFImporter.GetMeshNodeCount(arg);
             bool splitObjects = false;
 
             if (meshCount > 1)
             {
-                Console.Write($"\nFound {meshCount} distinct objects in this GLTF. Export each as a separate .x file? (Y/N): ");
+                Console.Write($"\nFound {meshCount} distinct objects in this GLB. Export each as a separate .x file? (Y/N): ");
                 var key = Console.ReadKey();
                 Console.WriteLine("\n");
                 if (key.Key == ConsoleKey.Y)
@@ -342,7 +342,7 @@ namespace LOMNTool
 
             if (splitObjects)
             {
-                Console.WriteLine("    Importing and splitting GLTF objects...");
+                Console.WriteLine("    Importing and splitting GLB objects...");
                 var splitFiles = LOMNTool.GLTF.GLTFImporter.ImportSplitMeshes(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), out bhdOut);
 
                 foreach (var kvp in splitFiles)
@@ -359,7 +359,7 @@ namespace LOMNTool
             }
             else
             {
-                Console.WriteLine("    Importing GLTF file (checking for morph sequences)...");
+                Console.WriteLine("    Importing GLB file (checking for morph sequences)...");
 
                 Dictionary<string, XFile> frames = LOMNTool.GLTF.GLTFImporter.ImportMorphSequence(arg, SharpDX.Matrix.RotationX(SharpDX.MathUtil.PiOverTwo), out bhdOut);
 

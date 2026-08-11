@@ -85,16 +85,6 @@ namespace D3DX
                         writer.WriteLine("v " + pos2.X + " " + pos2.Y + " " + pos2.Z);
                     }
 
-                    /*if (LOMNTool.Program.Config.GetValueOrDefault("OBJ", "ExportVertexColors", "false").ToLower() == "zbrush" && meshVertexColors != null)
-                    {
-                        writer.WriteLine("\n\n# Here goes my attempt at writing the MRGB block for ZBrush polypaint:");
-
-                        writer.Write("#MRGB ");
-                        foreach 
-
-                        writer.WriteLine("# End of MRGB block");
-                    }*/
-
                     // Gather normals
                     int normalCount = (int)meshNormals["nNormals"].Values[0];
                     for (int i = 0; i < normalCount; i++)
