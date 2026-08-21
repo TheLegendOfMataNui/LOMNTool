@@ -384,7 +384,8 @@ namespace LOMNTool.GLTF
                 }
             }
 
-            col = colorMap.TryGetValue(vIndex, out Vector4 color) ? new System.Numerics.Vector4(color.X, color.Y, color.Z, color.W) : new System.Numerics.Vector4(1, 1, 1, 1);
+            // Alpha Clamping: Hardcode to 1.0f (W) so Blender doesn't render meshes with 0.0 game alpha as invisible
+            col = colorMap.TryGetValue(vIndex, out Vector4 color) ? new System.Numerics.Vector4(color.X, color.Y, color.Z, 1.0f) : new System.Numerics.Vector4(1, 1, 1, 1);
         }
 
         private static string[] DeduceNameSlots(XFile xFile)

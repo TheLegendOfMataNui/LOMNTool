@@ -533,6 +533,7 @@ namespace LOMNTool.GLTF
             XObject mesh = XReader.NativeTemplates["Mesh"].Instantiate();
             XObject meshNormals = XReader.NativeTemplates["MeshNormals"].Instantiate();
             XObject meshTextureCoords = XReader.NativeTemplates["MeshTextureCoords"].Instantiate();
+            XObject meshVertexColors = XReader.NativeTemplates["MeshVertexColors"].Instantiate();
             XObject meshMaterialList = XReader.NativeTemplates["MeshMaterialList"].Instantiate();
 
             Dictionary<string, List<Tuple<int, float>>> boneWeights = new Dictionary<string, List<Tuple<int, float>>>();
@@ -545,6 +546,7 @@ namespace LOMNTool.GLTF
             int vertexOffset = 0;
             int faceOffset = 0;
             int materialIndex = 0;
+            bool hasVertexColors = false;
 
             foreach (var prim in gltfMesh.Primitives)
             {
@@ -553,9 +555,11 @@ namespace LOMNTool.GLTF
                 var uvs = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
                 var joints0 = prim.GetVertexAccessor("JOINTS_0")?.AsVector4Array();
                 var weights0 = prim.GetVertexAccessor("WEIGHTS_0")?.AsVector4Array();
+                var colors = prim.GetVertexAccessor("COLOR_0")?.AsVector4Array(); // Restored logic to pull COLOR_0!
                 var indices = prim.GetIndices();
 
                 if (positions == null || indices == null) continue;
+                if (colors != null) hasVertexColors = true;
 
                 // Look up position and normal modifications for the targeted shape key frame
                 IList<System.Numerics.Vector3> morphDeltas = null;
@@ -628,6 +632,17 @@ namespace LOMNTool.GLTF
                         meshTextureCoords["textureCoords"].Values.Add(XUtils.TexCoord(new Vector2(0, 0)));
                     }
 
+                    // Restored Vertex Colors! Apply to output .X file.
+                    if (colors != null && i < colors.Count)
+                    {
+                        meshVertexColors["vertexColors"].Values.Add(XUtils.IndexedColor(vertexOffset + i, new Vector4(colors[i].X, colors[i].Y, colors[i].Z, colors[i].W)));
+                    }
+                    else if (hasVertexColors)
+                    {
+                        // Ensure arrays don't fall out of sync if only part of a mesh has colors
+                        meshVertexColors["vertexColors"].Values.Add(XUtils.IndexedColor(vertexOffset + i, new Vector4(1, 1, 1, 1)));
+                    }
+
                     if (skin != null && joints0 != null && weights0 != null)
                     {
                         int globalVIndex = vertexOffset + i;
@@ -691,6 +706,13 @@ namespace LOMNTool.GLTF
 
             meshTextureCoords["nTextureCoords"].Values.Add(meshTextureCoords["textureCoords"].Values.Count);
             mesh.Children.Add(new XChildObject(meshTextureCoords, false));
+
+            // Output our restored vertex colors to the final hierarchy
+            if (hasVertexColors)
+            {
+                meshVertexColors["nVertexColors"].Values.Add(meshVertexColors["vertexColors"].Values.Count);
+                mesh.Children.Add(new XChildObject(meshVertexColors, false));
+            }
 
             meshMaterialList["nMaterials"].Values.Add(meshMaterialList.Children.Count);
             meshMaterialList["nFaceIndexes"].Values.Add(meshMaterialList["faceIndexes"].Values.Count);
