@@ -216,12 +216,37 @@ namespace LOMNTool.GLTF
                                             texName = (string)texChild.Object["filename"].Values[0];
                                     }
 
-                                    materials.Add(new MaterialBuilder(texName).WithMetallicRoughnessShader());
+                                    // MATERIAL ORDER PRESERVATION: Prepend index to safely extract it when importing back from Blender
+                                    string matName = $"MAT_{materials.Count:D3}_{System.IO.Path.GetFileNameWithoutExtension(texName)}";
+                                    var matBuilder = new MaterialBuilder(matName).WithMetallicRoughnessShader();
+                                    materials.Add(matBuilder);
                                 }
                             }
                         }
 
                         if (materials.Count == 0) materials.Add(new MaterialBuilder("dummy.dds").WithMetallicRoughnessShader());
+
+                        // UNUSED MATERIAL FIX: Inject a valid dummy triangle tagged with UV(-9999, -9999) to force Blender to keep the material
+                        for (int mIdx = 0; mIdx < materials.Count; mIdx++)
+                        {
+                            var mat = materials[mIdx];
+                            if (skinnedBuilder != null)
+                            {
+                                var prim = skinnedBuilder.UsePrimitive(mat);
+                                var v0 = new SkinnedVertexBuilder(); v0.Geometry.Position = new System.Numerics.Vector3(0, 0, 0); v0.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v0.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v0.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1); v0.Skinning.SetBindings((0, 1.0f));
+                                var v1 = new SkinnedVertexBuilder(); v1.Geometry.Position = new System.Numerics.Vector3(0.01f, 0, 0); v1.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v1.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v1.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1); v1.Skinning.SetBindings((0, 1.0f));
+                                var v2 = new SkinnedVertexBuilder(); v2.Geometry.Position = new System.Numerics.Vector3(0, 0.01f, 0); v2.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v2.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v2.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1); v2.Skinning.SetBindings((0, 1.0f));
+                                prim.AddTriangle(v0, v1, v2);
+                            }
+                            else if (staticBuilder != null)
+                            {
+                                var prim = staticBuilder.UsePrimitive(mat);
+                                var v0 = new StaticVertexBuilder(); v0.Geometry.Position = new System.Numerics.Vector3(0, 0, 0); v0.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v0.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v0.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                                var v1 = new StaticVertexBuilder(); v1.Geometry.Position = new System.Numerics.Vector3(0.01f, 0, 0); v1.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v1.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v1.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                                var v2 = new StaticVertexBuilder(); v2.Geometry.Position = new System.Numerics.Vector3(0, 0.01f, 0); v2.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v2.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v2.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                                prim.AddTriangle(v0, v1, v2);
+                            }
+                        }
 
                         var vertexWeights = new Dictionary<int, List<(int jointIndex, float weight)>>();
                         if (skinnedBuilder != null && skeletonNodes != null)

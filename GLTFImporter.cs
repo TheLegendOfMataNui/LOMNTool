@@ -528,6 +528,18 @@ namespace LOMNTool.GLTF
             return bhd;
         }
 
+        // Helper to extract the original material index from the MAT_XXX tag
+        private static int ExtractMatIndex(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return -1;
+            var match = System.Text.RegularExpressions.Regex.Match(name, @"^MAT_(\d{3})_");
+            if (match.Success)
+            {
+                return int.Parse(match.Groups[1].Value);
+            }
+            return -1;
+        }
+
         private static XObject ExtractMesh(Mesh gltfMesh, Matrix transform, Skin skin, BHDFile bhd, ModelRoot model, int morphIndex)
         {
             XObject mesh = XReader.NativeTemplates["Mesh"].Instantiate();
@@ -535,6 +547,73 @@ namespace LOMNTool.GLTF
             XObject meshTextureCoords = XReader.NativeTemplates["MeshTextureCoords"].Instantiate();
             XObject meshVertexColors = XReader.NativeTemplates["MeshVertexColors"].Instantiate();
             XObject meshMaterialList = XReader.NativeTemplates["MeshMaterialList"].Instantiate();
+
+            // MATERIAL RESTORATION: Read LogicalMaterials, sort them by MAT_XXX tag, and build the list once
+            var originalMaterials = model.LogicalMaterials.ToList();
+            var sortedMaterials = new List<Material>(originalMaterials);
+            sortedMaterials.Sort((a, b) => {
+                int idxA = ExtractMatIndex(a.Name);
+                int idxB = ExtractMatIndex(b.Name);
+                if (idxA == -1 && idxB == -1) return originalMaterials.IndexOf(a).CompareTo(originalMaterials.IndexOf(b));
+                if (idxA == -1) return 1;
+                if (idxB == -1) return -1;
+                return idxA.CompareTo(idxB);
+            });
+
+            Dictionary<Material, int> materialToIndex = new Dictionary<Material, int>();
+            int matIdx = 0;
+            foreach (var gltfMat in sortedMaterials)
+            {
+                XObject matObj = XReader.NativeTemplates["Material"].Instantiate();
+                var baseColorChannel = gltfMat.FindChannel("BaseColor");
+                var baseColor = baseColorChannel?.Color ?? System.Numerics.Vector4.One;
+
+                matObj["faceColor"].Values.Add(XUtils.ColorRGBA(baseColor.X, baseColor.Y, baseColor.Z, baseColor.W));
+                matObj["power"].Values.Add(0.0f);
+                matObj["specularColor"].Values.Add(XUtils.ColorRGB(0, 0, 0));
+                matObj["emissiveColor"].Values.Add(XUtils.ColorRGB(0, 0, 0));
+
+                string texName = gltfMat.Name;
+
+                // Strip the MAT_XXX tag for the final file
+                if (texName != null && texName.StartsWith("MAT_") && texName.Length >= 8 && texName[7] == '_')
+                {
+                    texName = texName.Substring(8);
+                }
+
+                // Override with actual texture filename if available
+                if (baseColorChannel != null && baseColorChannel.Value.Texture != null && baseColorChannel.Value.Texture.PrimaryImage != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(baseColorChannel.Value.Texture.PrimaryImage.Name))
+                    {
+                        texName = baseColorChannel.Value.Texture.PrimaryImage.Name;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(texName) && !texName.Equals("dummy", StringComparison.OrdinalIgnoreCase) && !texName.Equals("dummy.dds", StringComparison.OrdinalIgnoreCase) && !texName.Equals("MeshMaterial", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!texName.EndsWith(".dds", StringComparison.OrdinalIgnoreCase))
+                        texName += ".dds";
+
+                    XObject texFilename = XReader.NativeTemplates["TextureFilename"].Instantiate();
+                    texFilename["filename"].Values.Add(texName);
+                    matObj.Children.Add(new XChildObject(texFilename, false));
+                }
+
+                meshMaterialList.Children.Add(new XChildObject(matObj, false));
+                materialToIndex[gltfMat] = matIdx;
+                matIdx++;
+            }
+
+            if (meshMaterialList.Children.Count == 0)
+            {
+                XObject matObj = XReader.NativeTemplates["Material"].Instantiate();
+                matObj["faceColor"].Values.Add(XUtils.ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
+                matObj["power"].Values.Add(0.0f);
+                matObj["specularColor"].Values.Add(XUtils.ColorRGB(0, 0, 0));
+                matObj["emissiveColor"].Values.Add(XUtils.ColorRGB(0, 0, 0));
+                meshMaterialList.Children.Add(new XChildObject(matObj, false));
+            }
 
             Dictionary<string, List<Tuple<int, float>>> boneWeights = new Dictionary<string, List<Tuple<int, float>>>();
             if (skin != null)
@@ -545,7 +624,6 @@ namespace LOMNTool.GLTF
 
             int vertexOffset = 0;
             int faceOffset = 0;
-            int materialIndex = 0;
             bool hasVertexColors = false;
 
             foreach (var prim in gltfMesh.Primitives)
@@ -555,13 +633,12 @@ namespace LOMNTool.GLTF
                 var uvs = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
                 var joints0 = prim.GetVertexAccessor("JOINTS_0")?.AsVector4Array();
                 var weights0 = prim.GetVertexAccessor("WEIGHTS_0")?.AsVector4Array();
-                var colors = prim.GetVertexAccessor("COLOR_0")?.AsVector4Array(); // Restored logic to pull COLOR_0!
+                var colors = prim.GetVertexAccessor("COLOR_0")?.AsVector4Array();
                 var indices = prim.GetIndices();
 
                 if (positions == null || indices == null) continue;
                 if (colors != null) hasVertexColors = true;
 
-                // Look up position and normal modifications for the targeted shape key frame
                 IList<System.Numerics.Vector3> morphDeltas = null;
                 IList<System.Numerics.Vector3> morphNormalDeltas = null;
 
@@ -582,7 +659,6 @@ namespace LOMNTool.GLTF
                 {
                     Vector3 p = new Vector3(positions[i].X, positions[i].Y, positions[i].Z);
 
-                    // Add absolute vertex offset from morph structure if active
                     if (morphDeltas != null && i < morphDeltas.Count)
                     {
                         p.X += morphDeltas[i].X;
@@ -597,7 +673,6 @@ namespace LOMNTool.GLTF
                     {
                         Vector3 n = new Vector3(normals[i].X, normals[i].Y, normals[i].Z);
 
-                        // SHADING FIX: Apply Normal Deltas to fix smooth shading in DX Viewer
                         if (morphNormalDeltas != null && i < morphNormalDeltas.Count)
                         {
                             n.X += morphNormalDeltas[i].X;
@@ -605,7 +680,6 @@ namespace LOMNTool.GLTF
                             n.Z += morphNormalDeltas[i].Z;
                         }
 
-                        // Re-normalize vector after morph shift
                         float lenSq = n.X * n.X + n.Y * n.Y + n.Z * n.Z;
                         if (lenSq > 0.000001f)
                         {
@@ -632,14 +706,12 @@ namespace LOMNTool.GLTF
                         meshTextureCoords["textureCoords"].Values.Add(XUtils.TexCoord(new Vector2(0, 0)));
                     }
 
-                    // Restored Vertex Colors! Apply to output .X file.
                     if (colors != null && i < colors.Count)
                     {
                         meshVertexColors["vertexColors"].Values.Add(XUtils.IndexedColor(vertexOffset + i, new Vector4(colors[i].X, colors[i].Y, colors[i].Z, colors[i].W)));
                     }
                     else if (hasVertexColors)
                     {
-                        // Ensure arrays don't fall out of sync if only part of a mesh has colors
                         meshVertexColors["vertexColors"].Values.Add(XUtils.IndexedColor(vertexOffset + i, new Vector4(1, 1, 1, 1)));
                     }
 
@@ -656,45 +728,38 @@ namespace LOMNTool.GLTF
                     }
                 }
 
+                int currentFaceMaterialIndex = 0;
+                if (prim.Material != null && materialToIndex.ContainsKey(prim.Material))
+                {
+                    currentFaceMaterialIndex = materialToIndex[prim.Material];
+                }
+
                 for (int i = 0; i < indices.Count; i += 3)
                 {
+                    int v0 = (int)indices[i];
+                    int v1 = (int)indices[i + 1];
+                    int v2 = (int)indices[i + 2];
+
+                    // Filter out the dummy triangles created by the exporter for material preservation
+                    if (uvs != null && v0 < uvs.Count && uvs[v0].X < -9000f)
+                    {
+                        continue;
+                    }
+
                     List<int> faceIndices = new List<int> {
-                        (int)(indices[i] + vertexOffset),
-                        (int)(indices[i + 1] + vertexOffset),
-                        (int)(indices[i + 2] + vertexOffset)
+                        (int)(v0 + vertexOffset),
+                        (int)(v1 + vertexOffset),
+                        (int)(v2 + vertexOffset)
                     };
 
                     mesh["faces"].Values.Add(XUtils.Face(faceIndices));
                     meshNormals["faceNormals"].Values.Add(XUtils.Face(faceIndices));
 
-                    meshMaterialList["faceIndexes"].Values.Add(materialIndex);
+                    meshMaterialList["faceIndexes"].Values.Add(currentFaceMaterialIndex);
                     faceOffset++;
                 }
 
-                XObject matObj = XReader.NativeTemplates["Material"].Instantiate();
-                var baseColorChannel = prim.Material?.FindChannel("BaseColor");
-                var baseColor = baseColorChannel?.Color ?? System.Numerics.Vector4.One;
-
-                matObj["faceColor"].Values.Add(XUtils.ColorRGBA(baseColor.X, baseColor.Y, baseColor.Z, 1.0f));
-                matObj["power"].Values.Add(0.0f);
-                matObj["specularColor"].Values.Add(XUtils.ColorRGB(0, 0, 0));
-                matObj["emissiveColor"].Values.Add(XUtils.ColorRGB(0, 0, 0));
-
-                string texName = prim.Material?.Name;
-                if (!string.IsNullOrWhiteSpace(texName) && !texName.Equals("dummy", StringComparison.OrdinalIgnoreCase) && !texName.Equals("dummy.dds", StringComparison.OrdinalIgnoreCase) && !texName.Equals("MeshMaterial", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!texName.EndsWith(".dds", StringComparison.OrdinalIgnoreCase))
-                        texName += ".dds";
-
-                    XObject texFilename = XReader.NativeTemplates["TextureFilename"].Instantiate();
-                    texFilename["filename"].Values.Add(texName);
-                    matObj.Children.Add(new XChildObject(texFilename, false));
-                }
-
-                meshMaterialList.Children.Add(new XChildObject(matObj, false));
-
                 vertexOffset += positions.Count;
-                materialIndex++;
             }
 
             mesh["nVertices"].Values.Add(mesh["vertices"].Values.Count);
@@ -707,7 +772,6 @@ namespace LOMNTool.GLTF
             meshTextureCoords["nTextureCoords"].Values.Add(meshTextureCoords["textureCoords"].Values.Count);
             mesh.Children.Add(new XChildObject(meshTextureCoords, false));
 
-            // Output our restored vertex colors to the final hierarchy
             if (hasVertexColors)
             {
                 meshVertexColors["nVertexColors"].Values.Add(meshVertexColors["vertexColors"].Values.Count);
