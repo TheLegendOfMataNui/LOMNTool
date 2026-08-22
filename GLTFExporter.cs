@@ -15,20 +15,20 @@ namespace LOMNTool.GLTF
 
     public static class GLTFExporter
     {
-        public static void Export(XFile xFile, BHDFile bhd, string outputPath)
+        public static void Export(XFile xFile, BHDFile bhd, bool preserveUnusedMaterials, string outputPath)
         {
             if (bhd != null)
             {
-                ExportSkinned(xFile, bhd, outputPath);
+                ExportSkinned(xFile, bhd, preserveUnusedMaterials, outputPath);
             }
             else
             {
-                ExportStatic(xFile, outputPath);
+                ExportStatic(xFile, preserveUnusedMaterials, outputPath);
             }
         }
 
         // BATCH EXPORT: Groups multiple XFiles and their distinct objects into a single GLTF scene
-        public static void ExportCombined(List<XFile> xFiles, List<string> names, BHDFile bhd, string outputPath)
+        public static void ExportCombined(List<XFile> xFiles, List<string> names, BHDFile bhd, bool preserveUnusedMaterials, string outputPath)
         {
             var scene = new SceneBuilder();
             NodeBuilder[] gltfNodes = null;
@@ -64,10 +64,32 @@ namespace LOMNTool.GLTF
                         masterSkeletonRoot.AddNode(gltfNodes[i]);
                     }
 
-                    // Duplicate the pure rest matrix into a hidden node
+                    // Duplicate the pure rest matrix into hidden nodes using pure translation to survive Blender TRS decomposition
                     var srpNode = new NodeBuilder("SRP_" + nameSlots[i]);
-                    srpNode.LocalTransform = ConvertBhdMatrix(bhd.Bones[i].Transform);
                     srpRoot.AddNode(srpNode);
+
+                    var m = bhd.Bones[i].Transform;
+                    if (float.IsNaN(m.M11)) m = Matrix.Identity; // FIX: Prevent NaN values from crashing SharpGLTF
+
+                    var r1 = new NodeBuilder("R1_" + nameSlots[i]);
+                    r1.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M11, m.M12, m.M13);
+                    srpNode.AddNode(r1);
+
+                    var r2 = new NodeBuilder("R2_" + nameSlots[i]);
+                    r2.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M21, m.M22, m.M23);
+                    srpNode.AddNode(r2);
+
+                    var r3 = new NodeBuilder("R3_" + nameSlots[i]);
+                    r3.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M31, m.M32, m.M33);
+                    srpNode.AddNode(r3);
+
+                    var r4 = new NodeBuilder("R4_" + nameSlots[i]);
+                    r4.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M41, m.M42, m.M43);
+                    srpNode.AddNode(r4);
+
+                    var r5 = new NodeBuilder("R5_" + nameSlots[i]);
+                    r5.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M14, m.M24, m.M34);
+                    srpNode.AddNode(r5);
                 }
             }
 
@@ -80,13 +102,13 @@ namespace LOMNTool.GLTF
                 if (bhd != null)
                 {
                     var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexJoints4>(baseName);
-                    ParseMeshes(xFile, null, meshBuilder, gltfNodes);
+                    ParseMeshes(xFile, null, meshBuilder, gltfNodes, preserveUnusedMaterials);
                     scene.AddSkinnedMesh(meshBuilder, System.Numerics.Matrix4x4.Identity, gltfNodes);
                 }
                 else
                 {
                     var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexEmpty>(baseName);
-                    ParseMeshes(xFile, meshBuilder, null, null);
+                    ParseMeshes(xFile, meshBuilder, null, null, preserveUnusedMaterials);
 
                     // Append _Root to static mesh parent nodes
                     var rootNode = new NodeBuilder(baseName + "_Root");
@@ -96,17 +118,17 @@ namespace LOMNTool.GLTF
             }
 
             var model = scene.ToGltf2();
-            model.SaveGLB(outputPath); // CHANGED: SaveGLTF to SaveGLB
+            model.SaveGLB(outputPath);
         }
 
-        private static void ExportStatic(XFile xFile, string outputPath)
+        private static void ExportStatic(XFile xFile, bool preserveUnusedMaterials, string outputPath)
         {
             string baseName = System.IO.Path.GetFileNameWithoutExtension(outputPath);
 
             var scene = new SceneBuilder();
             var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexEmpty>(baseName);
 
-            ParseMeshes(xFile, meshBuilder, null, null);
+            ParseMeshes(xFile, meshBuilder, null, null, preserveUnusedMaterials);
 
             // Append _Root to prevent namespace collision
             var rootNode = new NodeBuilder(baseName + "_Root");
@@ -114,10 +136,10 @@ namespace LOMNTool.GLTF
             scene.AddRigidMesh(meshBuilder, rootNode);
 
             var model = scene.ToGltf2();
-            model.SaveGLB(outputPath); // CHANGED: SaveGLTF to SaveGLB
+            model.SaveGLB(outputPath);
         }
 
-        private static void ExportSkinned(XFile xFile, BHDFile bhd, string outputPath)
+        private static void ExportSkinned(XFile xFile, BHDFile bhd, bool preserveUnusedMaterials, string outputPath)
         {
             string baseName = System.IO.Path.GetFileNameWithoutExtension(outputPath);
 
@@ -152,21 +174,43 @@ namespace LOMNTool.GLTF
                     masterSkeletonRoot.AddNode(gltfNodes[i]);
                 }
 
-                // Duplicate the pure rest matrix into a hidden node
+                // Duplicate the pure rest matrix into hidden nodes using pure translation to survive Blender TRS decomposition
                 var srpNode = new NodeBuilder("SRP_" + nameSlots[i]);
-                srpNode.LocalTransform = ConvertBhdMatrix(bhd.Bones[i].Transform);
                 srpRoot.AddNode(srpNode);
+
+                var m = bhd.Bones[i].Transform;
+                if (float.IsNaN(m.M11)) m = Matrix.Identity; // FIX: Prevent NaN values from crashing SharpGLTF
+
+                var r1 = new NodeBuilder("R1_" + nameSlots[i]);
+                r1.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M11, m.M12, m.M13);
+                srpNode.AddNode(r1);
+
+                var r2 = new NodeBuilder("R2_" + nameSlots[i]);
+                r2.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M21, m.M22, m.M23);
+                srpNode.AddNode(r2);
+
+                var r3 = new NodeBuilder("R3_" + nameSlots[i]);
+                r3.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M31, m.M32, m.M33);
+                srpNode.AddNode(r3);
+
+                var r4 = new NodeBuilder("R4_" + nameSlots[i]);
+                r4.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M41, m.M42, m.M43);
+                srpNode.AddNode(r4);
+
+                var r5 = new NodeBuilder("R5_" + nameSlots[i]);
+                r5.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M14, m.M24, m.M34);
+                srpNode.AddNode(r5);
             }
 
-            ParseMeshes(xFile, null, meshBuilder, gltfNodes);
+            ParseMeshes(xFile, null, meshBuilder, gltfNodes, preserveUnusedMaterials);
 
             scene.AddSkinnedMesh(meshBuilder, System.Numerics.Matrix4x4.Identity, gltfNodes);
 
             var model = scene.ToGltf2();
-            model.SaveGLB(outputPath); // CHANGED: SaveGLTF to SaveGLB
+            model.SaveGLB(outputPath);
         }
 
-        private static void ParseMeshes(XFile xFile, IMeshBuilder<MaterialBuilder> staticBuilder, IMeshBuilder<MaterialBuilder> skinnedBuilder, NodeBuilder[] skeletonNodes)
+        private static void ParseMeshes(XFile xFile, IMeshBuilder<MaterialBuilder> staticBuilder, IMeshBuilder<MaterialBuilder> skinnedBuilder, NodeBuilder[] skeletonNodes, bool preserveUnusedMaterials)
         {
             foreach (var frame in xFile.Objects)
             {
@@ -226,25 +270,28 @@ namespace LOMNTool.GLTF
 
                         if (materials.Count == 0) materials.Add(new MaterialBuilder("dummy.dds").WithMetallicRoughnessShader());
 
-                        // UNUSED MATERIAL FIX: Inject a valid dummy triangle tagged with UV(-9999, -9999) to force Blender to keep the material
-                        for (int mIdx = 0; mIdx < materials.Count; mIdx++)
+                        if (preserveUnusedMaterials)
                         {
-                            var mat = materials[mIdx];
-                            if (skinnedBuilder != null)
+                            // UNUSED MATERIAL FIX: Inject a valid dummy triangle tagged with UV(-9999, -9999) to force Blender to keep the material
+                            for (int mIdx = 0; mIdx < materials.Count; mIdx++)
                             {
-                                var prim = skinnedBuilder.UsePrimitive(mat);
-                                var v0 = new SkinnedVertexBuilder(); v0.Geometry.Position = new System.Numerics.Vector3(0, 0, 0); v0.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v0.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v0.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1); v0.Skinning.SetBindings((0, 1.0f));
-                                var v1 = new SkinnedVertexBuilder(); v1.Geometry.Position = new System.Numerics.Vector3(0.01f, 0, 0); v1.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v1.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v1.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1); v1.Skinning.SetBindings((0, 1.0f));
-                                var v2 = new SkinnedVertexBuilder(); v2.Geometry.Position = new System.Numerics.Vector3(0, 0.01f, 0); v2.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v2.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v2.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1); v2.Skinning.SetBindings((0, 1.0f));
-                                prim.AddTriangle(v0, v1, v2);
-                            }
-                            else if (staticBuilder != null)
-                            {
-                                var prim = staticBuilder.UsePrimitive(mat);
-                                var v0 = new StaticVertexBuilder(); v0.Geometry.Position = new System.Numerics.Vector3(0, 0, 0); v0.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v0.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v0.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
-                                var v1 = new StaticVertexBuilder(); v1.Geometry.Position = new System.Numerics.Vector3(0.01f, 0, 0); v1.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v1.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v1.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
-                                var v2 = new StaticVertexBuilder(); v2.Geometry.Position = new System.Numerics.Vector3(0, 0.01f, 0); v2.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v2.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v2.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
-                                prim.AddTriangle(v0, v1, v2);
+                                var mat = materials[mIdx];
+                                if (skinnedBuilder != null)
+                                {
+                                    var prim = skinnedBuilder.UsePrimitive(mat);
+                                    var v0 = new SkinnedVertexBuilder(); v0.Geometry.Position = new System.Numerics.Vector3(0, 0, 0); v0.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v0.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v0.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1); v0.Skinning.SetBindings((0, 1.0f));
+                                    var v1 = new SkinnedVertexBuilder(); v1.Geometry.Position = new System.Numerics.Vector3(0.01f, 0, 0); v1.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v1.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v1.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1); v1.Skinning.SetBindings((0, 1.0f));
+                                    var v2 = new SkinnedVertexBuilder(); v2.Geometry.Position = new System.Numerics.Vector3(0, 0.01f, 0); v2.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v2.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v2.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1); v2.Skinning.SetBindings((0, 1.0f));
+                                    prim.AddTriangle(v0, v1, v2);
+                                }
+                                else if (staticBuilder != null)
+                                {
+                                    var prim = staticBuilder.UsePrimitive(mat);
+                                    var v0 = new StaticVertexBuilder(); v0.Geometry.Position = new System.Numerics.Vector3(0, 0, 0); v0.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v0.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v0.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                                    var v1 = new StaticVertexBuilder(); v1.Geometry.Position = new System.Numerics.Vector3(0.01f, 0, 0); v1.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v1.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v1.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                                    var v2 = new StaticVertexBuilder(); v2.Geometry.Position = new System.Numerics.Vector3(0, 0.01f, 0); v2.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v2.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v2.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                                    prim.AddTriangle(v0, v1, v2);
+                                }
                             }
                         }
 

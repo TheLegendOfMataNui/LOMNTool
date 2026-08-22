@@ -124,9 +124,30 @@ namespace LOMNTool
                         }
                     }
 
-                    // CHANGED: .gltf to .glb
+                    bool preserveUnusedCombined = false;
+                    bool hasUnusedCombined = false;
+                    foreach (var xf in loadedXFiles)
+                    {
+                        if (HasUnusedMaterials(xf))
+                        {
+                            hasUnusedCombined = true;
+                            break;
+                        }
+                    }
+
+                    if (hasUnusedCombined)
+                    {
+                        Console.Write($"\nFound unused materials in combined export. Retain in GLB? (Y/N): ");
+                        var keyCombined = Console.ReadKey();
+                        Console.WriteLine("\n");
+                        if (keyCombined.Key == ConsoleKey.Y)
+                        {
+                            preserveUnusedCombined = true;
+                        }
+                    }
+
                     string outPath = Path.Combine(Path.GetDirectoryName(xFiles[0]), skeletonName + ".glb");
-                    LOMNTool.GLTF.GLTFExporter.ExportCombined(loadedXFiles, fileNames, sharedBhd, outPath);
+                    LOMNTool.GLTF.GLTFExporter.ExportCombined(loadedXFiles, fileNames, sharedBhd, preserveUnusedCombined, outPath);
                     Console.WriteLine("    Successfully wrote " + outPath);
                 }
 
@@ -195,6 +216,42 @@ namespace LOMNTool
             Config.Write(Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetEntryAssembly().Location), "LOMNTool.ini"));
         }
 
+        public static bool HasUnusedMaterials(XFile file)
+        {
+            foreach (var frame in file.Objects)
+            {
+                foreach (XChildObject frameChild in frame.Children)
+                {
+                    var obj = frameChild.Object;
+                    if (obj.DataType.ID == XToken.TokenID.NAME && obj.DataType.NameData == "Mesh")
+                    {
+                        XObject meshMaterialList = null;
+                        foreach (XChildObject child in obj.Children)
+                        {
+                            if (child.Object.DataType.NameData == "MeshMaterialList")
+                                meshMaterialList = child.Object;
+                        }
+
+                        if (meshMaterialList != null)
+                        {
+                            int materialCount = (int)meshMaterialList["nMaterials"].Values[0];
+                            HashSet<int> usedMaterials = new HashSet<int>();
+                            foreach (object matIdx in meshMaterialList["faceIndexes"].Values)
+                            {
+                                usedMaterials.Add((int)matIdx);
+                            }
+
+                            if (usedMaterials.Count < materialCount)
+                            {
+                                return true; // Found at least one unused material!
+                            }
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
         public static void XFile(string arg, string sharedBhdPath = null)
         {
             using (FileStream stream = new FileStream(arg, FileMode.Open))
@@ -232,9 +289,20 @@ namespace LOMNTool
                         bhd = new BHDFile(targetBhd);
                     }
 
+                    bool preserveUnused = false;
+                    if (HasUnusedMaterials(file))
+                    {
+                        Console.Write($"\nFound unused materials in '{Path.GetFileName(arg)}'. Retain in GLB? (Y/N): ");
+                        var key = Console.ReadKey();
+                        Console.WriteLine("\n");
+                        if (key.Key == ConsoleKey.Y)
+                        {
+                            preserveUnused = true;
+                        }
+                    }
+
                     Console.WriteLine("    Writing GLB file...");
-                    // CHANGED: .gltf to .glb
-                    LOMNTool.GLTF.GLTFExporter.Export(file, bhd, Path.ChangeExtension(arg, ".glb"));
+                    LOMNTool.GLTF.GLTFExporter.Export(file, bhd, preserveUnused, Path.ChangeExtension(arg, ".glb"));
                 }
                 else if (modelFormat == "TXT")
                 {
