@@ -885,5 +885,90 @@ namespace LOMNTool.GLTF
                 m.M13, m.M23, m.M33, 0.0f,
                 m.M14, m.M24, m.M34, 1.0f);
         }
+
+        public static BCLFile ImportBCL(string filename)
+        {
+            var model = ModelRoot.Load(filename);
+            var vertices = new List<Vector3>();
+            var triangles = new List<BCLFile.Triangle>();
+
+            if (model.LogicalMeshes.Count == 0)
+                return new BCLFile(vertices, triangles);
+
+            var originalMaterials = model.LogicalMaterials.ToList();
+            var sortedMaterials = new List<Material>(originalMaterials);
+            sortedMaterials.Sort((a, b) => {
+                int idxA = ExtractMatIndex(a.Name);
+                int idxB = ExtractMatIndex(b.Name);
+                if (idxA == -1 && idxB == -1) return originalMaterials.IndexOf(a).CompareTo(originalMaterials.IndexOf(b));
+                if (idxA == -1) return 1;
+                if (idxB == -1) return -1;
+                return idxA.CompareTo(idxB);
+            });
+
+            Dictionary<Material, int> materialToIndex = new Dictionary<Material, int>();
+            int matIdx = 0;
+            foreach (var gltfMat in sortedMaterials)
+            {
+                int originalIdx = ExtractMatIndex(gltfMat.Name);
+                if (originalIdx != -1)
+                {
+                    materialToIndex[gltfMat] = originalIdx;
+                }
+                else
+                {
+                    materialToIndex[gltfMat] = matIdx;
+                }
+                matIdx++;
+            }
+
+            int vertexOffset = 0;
+
+            // Iterate over all nodes to capture exact world positions of disjoint meshes
+            foreach (var node in model.LogicalNodes.Where(n => n.Mesh != null))
+            {
+                System.Numerics.Matrix4x4 transform = node.WorldMatrix;
+
+                foreach (var prim in node.Mesh.Primitives)
+                {
+                    var positions = prim.GetVertexAccessor("POSITION")?.AsVector3Array();
+                    var uvs = prim.GetVertexAccessor("TEXCOORD_0")?.AsVector2Array();
+                    var indices = prim.GetIndices();
+
+                    if (positions == null || indices == null) continue;
+
+                    for (int i = 0; i < positions.Count; i++)
+                    {
+                        var pTrans = System.Numerics.Vector3.Transform(positions[i], transform);
+                        vertices.Add(new Vector3(pTrans.X, pTrans.Y, pTrans.Z));
+                    }
+
+                    ushort currentMaterial = 0;
+                    if (prim.Material != null && materialToIndex.ContainsKey(prim.Material))
+                    {
+                        currentMaterial = (ushort)materialToIndex[prim.Material];
+                    }
+
+                    for (int i = 0; i < indices.Count; i += 3)
+                    {
+                        int v0 = (int)indices[i];
+                        int v1 = (int)indices[i + 1];
+                        int v2 = (int)indices[i + 2];
+
+                        // Filter out the dummy triangles created by the exporter for material preservation
+                        if (uvs != null && v0 < uvs.Count && uvs[v0].X < -9000f)
+                        {
+                            continue;
+                        }
+
+                        triangles.Add(new BCLFile.Triangle((ushort)(v0 + vertexOffset), (ushort)(v1 + vertexOffset), (ushort)(v2 + vertexOffset), currentMaterial));
+                    }
+
+                    vertexOffset += positions.Count;
+                }
+            }
+
+            return new BCLFile(vertices, triangles);
+        }
     }
 }

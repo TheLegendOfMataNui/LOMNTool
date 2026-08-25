@@ -210,6 +210,164 @@ namespace LOMNTool.GLTF
             model.SaveGLB(outputPath);
         }
 
+        public static void ExportBCL(BCLFile bcl, string outputPath)
+        {
+            string baseName = System.IO.Path.GetFileNameWithoutExtension(outputPath);
+
+            var scene = new SceneBuilder();
+            var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexEmpty>(baseName);
+
+            // 1. Determine the absolute maximum material index used by any triangle in the BCL
+            int maxMat = -1;
+            if (bcl.Triangles.Count > 0)
+            {
+                maxMat = bcl.Triangles.Max(t => t.Unk01);
+            }
+
+            // 2. Generate a continuous array of materials from 0 to maxMat to ensure order and unused slots are locked in
+            var materials = new List<MaterialBuilder>();
+            for (int i = 0; i <= maxMat; i++)
+            {
+                string matName = $"MAT_{i:D3}_Collision";
+                materials.Add(new MaterialBuilder(matName).WithMetallicRoughnessShader());
+            }
+
+            if (materials.Count == 0)
+            {
+                materials.Add(new MaterialBuilder("MAT_000_Collision").WithMetallicRoughnessShader());
+            }
+
+            // 3. Inject the UV(-9999, -9999) dummy triangle exploit for every material so Blender is forced to keep the empty ones
+            for (int mIdx = 0; mIdx < materials.Count; mIdx++)
+            {
+                var mat = materials[mIdx];
+                var prim = meshBuilder.UsePrimitive(mat);
+
+                var v0 = new StaticVertexBuilder(); v0.Geometry.Position = new System.Numerics.Vector3(0, 0, 0); v0.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v0.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v0.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                var v1 = new StaticVertexBuilder(); v1.Geometry.Position = new System.Numerics.Vector3(0.01f, 0, 0); v1.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v1.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v1.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                var v2 = new StaticVertexBuilder(); v2.Geometry.Position = new System.Numerics.Vector3(0, 0.01f, 0); v2.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v2.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v2.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+
+                prim.AddTriangle(v0, v1, v2);
+            }
+
+            // 4. Build the actual collision geometry, mapping each face to the correct unified material index
+            foreach (var t in bcl.Triangles)
+            {
+                var mat = materials[t.Unk01];
+                var prim = meshBuilder.UsePrimitive(mat);
+
+                var v1 = bcl.Vertices[t.Index1];
+                var v2 = bcl.Vertices[t.Index2];
+                var v3 = bcl.Vertices[t.Index3];
+
+                // Add basic surface normals to make SharpGLTF valid
+                var d1 = v2 - v1;
+                var d2 = v3 - v1;
+                var norm = Vector3.Cross(d1, d2);
+                norm.Normalize();
+                if (float.IsNaN(norm.X)) norm = new Vector3(0, 1, 0);
+
+                var n = new System.Numerics.Vector3(norm.X, norm.Y, norm.Z);
+
+                var sv1 = new StaticVertexBuilder(); sv1.Geometry.Position = new System.Numerics.Vector3(v1.X, v1.Y, v1.Z); sv1.Geometry.Normal = n; sv1.Material.TexCoord = new System.Numerics.Vector2(0, 0); sv1.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                var sv2 = new StaticVertexBuilder(); sv2.Geometry.Position = new System.Numerics.Vector3(v2.X, v2.Y, v2.Z); sv2.Geometry.Normal = n; sv2.Material.TexCoord = new System.Numerics.Vector2(0, 0); sv2.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                var sv3 = new StaticVertexBuilder(); sv3.Geometry.Position = new System.Numerics.Vector3(v3.X, v3.Y, v3.Z); sv3.Geometry.Normal = n; sv3.Material.TexCoord = new System.Numerics.Vector2(0, 0); sv3.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+
+                prim.AddTriangle(sv1, sv2, sv3);
+            }
+
+            var rootNode = new NodeBuilder(baseName + "_Root");
+            scene.AddNode(rootNode);
+            scene.AddRigidMesh(meshBuilder, rootNode);
+
+            var model = scene.ToGltf2();
+            model.SaveGLB(outputPath);
+        }
+
+        public static void ExportOCL(OCLFile ocl, string outputPath)
+        {
+            string baseName = System.IO.Path.GetFileNameWithoutExtension(outputPath);
+
+            var scene = new SceneBuilder();
+            var meshBuilder = new MeshBuilder<VertexPositionNormal, VertexColor1Texture1, VertexEmpty>(baseName);
+
+            // 1. Traverse octree and gather all triangles
+            var allTriangles = new List<OCLFile.OctreeNode.Triangle>();
+            GatherOCLTriangles(ocl.RootNode, allTriangles);
+
+            // 2. Determine the absolute maximum material index used by any triangle in the OCL
+            int maxMat = -1;
+            if (allTriangles.Count > 0)
+            {
+                maxMat = (int)allTriangles.Max(t => t.MaterialIndex);
+            }
+
+            // 3. Generate a continuous array of materials from 0 to maxMat to ensure order and unused slots are locked in
+            var materials = new List<MaterialBuilder>();
+            for (int i = 0; i <= maxMat; i++)
+            {
+                string matName = $"MAT_{i:D3}_Collision";
+                materials.Add(new MaterialBuilder(matName).WithMetallicRoughnessShader());
+            }
+
+            if (materials.Count == 0)
+            {
+                materials.Add(new MaterialBuilder("MAT_000_Collision").WithMetallicRoughnessShader());
+            }
+
+            // 4. Inject the UV(-9999, -9999) dummy triangle exploit for every material so Blender is forced to keep the empty ones
+            for (int mIdx = 0; mIdx < materials.Count; mIdx++)
+            {
+                var mat = materials[mIdx];
+                var prim = meshBuilder.UsePrimitive(mat);
+
+                var v0 = new StaticVertexBuilder(); v0.Geometry.Position = new System.Numerics.Vector3(0, 0, 0); v0.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v0.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v0.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                var v1 = new StaticVertexBuilder(); v1.Geometry.Position = new System.Numerics.Vector3(0.01f, 0, 0); v1.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v1.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v1.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                var v2 = new StaticVertexBuilder(); v2.Geometry.Position = new System.Numerics.Vector3(0, 0.01f, 0); v2.Geometry.Normal = new System.Numerics.Vector3(0, 1, 0); v2.Material.TexCoord = new System.Numerics.Vector2(-9999f, -9999f); v2.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+
+                prim.AddTriangle(v0, v1, v2);
+            }
+
+            // 5. Build the actual collision geometry, mapping each face to the correct unified material index
+            foreach (var t in allTriangles)
+            {
+                var mat = materials[(int)t.MaterialIndex];
+                var prim = meshBuilder.UsePrimitive(mat);
+
+                var v1 = t.Position1;
+                var v2 = t.Position2;
+                var v3 = t.Position3;
+
+                var n = new System.Numerics.Vector3(t.Normal.X, t.Normal.Y, t.Normal.Z);
+
+                var sv1 = new StaticVertexBuilder(); sv1.Geometry.Position = new System.Numerics.Vector3(v1.X, v1.Y, v1.Z); sv1.Geometry.Normal = n; sv1.Material.TexCoord = new System.Numerics.Vector2(0, 0); sv1.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                var sv2 = new StaticVertexBuilder(); sv2.Geometry.Position = new System.Numerics.Vector3(v2.X, v2.Y, v2.Z); sv2.Geometry.Normal = n; sv2.Material.TexCoord = new System.Numerics.Vector2(0, 0); sv2.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+                var sv3 = new StaticVertexBuilder(); sv3.Geometry.Position = new System.Numerics.Vector3(v3.X, v3.Y, v3.Z); sv3.Geometry.Normal = n; sv3.Material.TexCoord = new System.Numerics.Vector2(0, 0); sv3.Material.Color = new System.Numerics.Vector4(1, 1, 1, 1);
+
+                prim.AddTriangle(sv1, sv2, sv3);
+            }
+
+            var rootNode = new NodeBuilder(baseName + "_Root");
+            scene.AddNode(rootNode);
+            scene.AddRigidMesh(meshBuilder, rootNode);
+
+            var model = scene.ToGltf2();
+            model.SaveGLB(outputPath);
+        }
+
+        private static void GatherOCLTriangles(OCLFile.OctreeNode node, List<OCLFile.OctreeNode.Triangle> list)
+        {
+            if (node == null) return;
+            list.AddRange(node.Triangles);
+            if (node.Children != null)
+            {
+                foreach (var child in node.Children)
+                {
+                    GatherOCLTriangles(child, list);
+                }
+            }
+        }
+
         private static void ParseMeshes(XFile xFile, IMeshBuilder<MaterialBuilder> staticBuilder, IMeshBuilder<MaterialBuilder> skinnedBuilder, NodeBuilder[] skeletonNodes, bool preserveUnusedMaterials)
         {
             foreach (var frame in xFile.Objects)

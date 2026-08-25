@@ -163,6 +163,47 @@ namespace LOMNTool
                         {
                             BCLOBJFile(arg);
                         }
+                        else if (arg.EndsWith(".bcl.glb") || arg.EndsWith(".bcl.gltf"))
+                        {
+                            Console.WriteLine("    Importing GLB to BCL...");
+                            LOMNTool.BCLFile file = LOMNTool.GLTF.GLTFImporter.ImportBCL(arg);
+                            string outPath = arg.Substring(0, arg.LastIndexOf(".bcl.")) + ".bcl";
+                            using (FileStream stream = new FileStream(outPath, FileMode.Create, FileAccess.Write, FileShare.Read))
+                            using (BinaryWriter writer = new BinaryWriter(stream))
+                            {
+                                file.Write(writer);
+                            }
+                            Console.WriteLine("    Successfully wrote " + outPath);
+                        }
+                        else if (arg.EndsWith(".ocl.glb") || arg.EndsWith(".ocl.gltf") || arg.EndsWith(".ocl.obj"))
+                        {
+                            Console.WriteLine("    [WARNING]: Importing geometry back to OCL is not supported (LOMNTool lacks an Octree compiler).");
+                            Console.Write("    Would you like to compile this into a BCL file instead? (The game handles them interchangeably) (Y/N): ");
+                            var key = Console.ReadKey();
+                            Console.WriteLine("\n");
+
+                            if (key.Key == ConsoleKey.Y)
+                            {
+                                string outPath = arg.Substring(0, arg.LastIndexOf(".ocl.")) + ".bcl";
+                                Console.WriteLine("    Writing BCL file...");
+                                LOMNTool.BCLFile file;
+                                if (arg.EndsWith(".obj"))
+                                {
+                                    file = LOMNTool.BCLFile.ImportOBJ(arg);
+                                }
+                                else
+                                {
+                                    file = LOMNTool.GLTF.GLTFImporter.ImportBCL(arg);
+                                }
+
+                                using (FileStream stream = new FileStream(outPath, FileMode.Create, FileAccess.Write, FileShare.Read))
+                                using (BinaryWriter writer = new BinaryWriter(stream))
+                                {
+                                    file.Write(writer);
+                                }
+                                Console.WriteLine("    Successfully wrote " + outPath);
+                            }
+                        }
                         else if (arg.EndsWith(".bhd.dae"))
                         {
                             BHDDAEFile(arg);
@@ -346,9 +387,27 @@ namespace LOMNTool
             using (FileStream stream = new FileStream(arg, FileMode.Open, FileAccess.Read, FileShare.Read))
             using (BinaryReader reader = new BinaryReader(stream))
             {
-                OCLFile file = new LOMNTool.OCLFile(reader);
+                LOMNTool.OCLFile file = new LOMNTool.OCLFile(reader);
                 file.LogDebug();
-                file.DumpOBJ(Path.ChangeExtension(arg, ".ocl.obj"));
+
+                Console.Write($"\nExport '{Path.GetFileName(arg)}' as OBJ or GLB? (1 = OBJ, 2 = GLB): ");
+                var key = Console.ReadKey();
+                Console.WriteLine("\n");
+
+                if (key.KeyChar == '2')
+                {
+                    Console.WriteLine("    Writing GLB file...");
+                    string outPath = Path.ChangeExtension(arg, ".ocl.glb");
+                    LOMNTool.GLTF.GLTFExporter.ExportOCL(file, outPath);
+                    Console.WriteLine("    Successfully wrote " + outPath);
+                }
+                else
+                {
+                    Console.WriteLine("    Writing OBJ file...");
+                    string outPath = Path.ChangeExtension(arg, ".ocl.obj");
+                    file.DumpOBJ(outPath);
+                    Console.WriteLine("    Successfully wrote " + outPath);
+                }
             }
         }
 
@@ -357,14 +416,32 @@ namespace LOMNTool
             using (FileStream stream = new FileStream(arg, FileMode.Open, FileAccess.Read, FileShare.Read))
             using (BinaryReader reader = new BinaryReader(stream))
             {
-                BCLFile file = new BCLFile(reader);
-                file.ExportOBJ(Path.ChangeExtension(arg, ".bcl.obj"));
+                LOMNTool.BCLFile file = new LOMNTool.BCLFile(reader);
+
+                Console.Write($"\nExport '{Path.GetFileName(arg)}' as OBJ or GLB? (1 = OBJ, 2 = GLB): ");
+                var key = Console.ReadKey();
+                Console.WriteLine("\n");
+
+                if (key.KeyChar == '2')
+                {
+                    Console.WriteLine("    Writing GLB file...");
+                    string outPath = Path.ChangeExtension(arg, ".bcl.glb");
+                    LOMNTool.GLTF.GLTFExporter.ExportBCL(file, outPath);
+                    Console.WriteLine("    Successfully wrote " + outPath);
+                }
+                else
+                {
+                    Console.WriteLine("    Writing OBJ file...");
+                    string outPath = Path.ChangeExtension(arg, ".bcl.obj");
+                    file.ExportOBJ(outPath);
+                    Console.WriteLine("    Successfully wrote " + outPath);
+                }
             }
         }
 
         public static void BCLOBJFile(string arg)
         {
-            BCLFile file = LOMNTool.BCLFile.ImportOBJ(arg);
+            LOMNTool.BCLFile file = LOMNTool.BCLFile.ImportOBJ(arg);
 
             using (FileStream stream = new FileStream(arg.Substring(0, arg.Length - 8) + ".bcl", FileMode.Create, FileAccess.Write, FileShare.Read))
             using (BinaryWriter writer = new BinaryWriter(stream))

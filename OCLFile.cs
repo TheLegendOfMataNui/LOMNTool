@@ -170,7 +170,7 @@ namespace LOMNTool
                 {
                     uint offset = reader.ReadUInt32();
                     if (offset != 0)
-                    { 
+                    {
                         long p = reader.BaseStream.Position;
                         reader.BaseStream.Position = offset;
                         Children[i] = new OctreeNode(reader, existingNodes);
@@ -240,10 +240,13 @@ namespace LOMNTool
         public void DumpOBJ(string filename)
         {
             using (StreamWriter writer = new StreamWriter(filename, false))
+            using (StreamWriter matWriter = new StreamWriter(Path.ChangeExtension(filename, ".mtl"), false))
             {
+                writer.WriteLine("mtllib " + Path.GetFileName(Path.ChangeExtension(filename, ".mtl")));
+
                 List<Vector3> vertices = new List<Vector3>();
                 List<Vector3> normals = new List<Vector3>();
-                List<Tuple<int, int, int, int>> faces = new List<Tuple<int, int, int, int>>();
+                List<Tuple<int, int, int, int, uint>> faces = new List<Tuple<int, int, int, int, uint>>();
 
                 DumpOBJNode(RootNode, writer, vertices, normals, faces);
 
@@ -257,12 +260,28 @@ namespace LOMNTool
                         + normal.Y.ToString(System.Globalization.CultureInfo.InvariantCulture) + " "
                         + normal.Z.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-                foreach (Tuple<int, int, int, int> face in faces)
+                uint lastMaterial = 0xFFFFFFFF;
+                List<uint> writtenMaterials = new List<uint>();
+
+                foreach (Tuple<int, int, int, int, uint> face in faces)
+                {
+                    if (lastMaterial != face.Item5)
+                    {
+                        writer.WriteLine("usemtl Material_" + face.Item5 + "_Mat");
+                        lastMaterial = face.Item5;
+
+                        if (!writtenMaterials.Contains(face.Item5))
+                        {
+                            matWriter.WriteLine("newmtl Material_" + face.Item5 + "_Mat");
+                            writtenMaterials.Add(face.Item5);
+                        }
+                    }
                     writer.WriteLine("f " + (face.Item1 + 1) + "//" + (face.Item4 + 1) + " " + (face.Item2 + 1) + "//" + (face.Item4 + 1) + " " + (face.Item3 + 1) + "//" + (face.Item4 + 1));
+                }
             }
         }
 
-        private void DumpOBJNode(OctreeNode node, StreamWriter writer, List<Vector3> vertices, List<Vector3> normals, List<Tuple<int, int, int, int>> faces)
+        private void DumpOBJNode(OctreeNode node, StreamWriter writer, List<Vector3> vertices, List<Vector3> normals, List<Tuple<int, int, int, int, uint>> faces)
         {
             foreach (OctreeNode.Triangle triangle in node.Triangles)
             {
@@ -294,7 +313,7 @@ namespace LOMNTool
                     normals.Add(triangle.Normal);
                 }
 
-                faces.Add(new Tuple<int, int, int, int>(position1Index, position2Index, position3Index, normalIndex));
+                faces.Add(new Tuple<int, int, int, int, uint>(position1Index, position2Index, position3Index, normalIndex, triangle.MaterialIndex));
             }
 
             for (int i = 0; i < node.Children.Length; i++)
