@@ -49,27 +49,42 @@ namespace LOMNTool.GLTF
                 var masterSkeletonRoot = new NodeBuilder(combinedName + "_Root");
                 scene.AddNode(masterSkeletonRoot);
 
-                // EMBED: Inject invisible "SaffireRestPoseData" block to make the GLB fully standalone
+                // Build unused bones group in memory (appended later to protect importer armature detection)
+                var unusedRoot = new NodeBuilder(combinedName + "_UnusedBones");
+                unusedRoot.LocalTransform = System.Numerics.Matrix4x4.CreateScale(0.0001f);
+
+                // Build SRP data block in memory
                 var srpRoot = new NodeBuilder(combinedName + "_SaffireRestPoseData");
-                scene.AddNode(srpRoot);
+                srpRoot.LocalTransform = System.Numerics.Matrix4x4.CreateScale(0.0001f);
 
                 for (int i = 0; i < bhd.Bones.Count; i++)
                 {
+                    var m = bhd.Bones[i].Transform;
+                    bool isUnused = float.IsNaN(m.M11);
+
                     if (bhd.Bones[i].ParentIndex != 0xFFFFFFFF && bhd.Bones[i].ParentIndex != i)
                     {
                         gltfNodes[bhd.Bones[i].ParentIndex].AddNode(gltfNodes[i]);
                     }
                     else
                     {
-                        masterSkeletonRoot.AddNode(gltfNodes[i]);
+                        if (isUnused)
+                        {
+                            unusedRoot.AddNode(gltfNodes[i]);
+                        }
+                        else
+                        {
+                            masterSkeletonRoot.AddNode(gltfNodes[i]);
+                        }
                     }
 
                     // Duplicate the pure rest matrix into hidden nodes using pure translation to survive Blender TRS decomposition
                     var srpNode = new NodeBuilder("SRP_" + nameSlots[i]);
-                    srpRoot.AddNode(srpNode);
 
-                    var m = bhd.Bones[i].Transform;
-                    if (float.IsNaN(m.M11)) m = Matrix.Identity; // FIX: Prevent NaN values from crashing SharpGLTF
+                    if (isUnused) m = Matrix.Identity; // FIX: Prevent NaN values from crashing SharpGLTF
+
+                    srpNode.LocalTransform = ConvertBhdMatrix(m);
+                    srpRoot.AddNode(srpNode);
 
                     var r1 = new NodeBuilder("R1_" + nameSlots[i]);
                     r1.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M11, m.M12, m.M13);
@@ -91,6 +106,10 @@ namespace LOMNTool.GLTF
                     r5.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M14, m.M24, m.M34);
                     srpNode.AddNode(r5);
                 }
+
+                // Append hidden groups at the end so the importer parses active bones first
+                masterSkeletonRoot.AddNode(unusedRoot);
+                masterSkeletonRoot.AddNode(srpRoot);
             }
 
             // Loop through all collected meshes and add them individually to the scene
@@ -159,26 +178,40 @@ namespace LOMNTool.GLTF
             var masterSkeletonRoot = new NodeBuilder(baseName + "_Root");
             scene.AddNode(masterSkeletonRoot);
 
-            // EMBED: Inject invisible "SaffireRestPoseData" block to make the GLB fully standalone
+            // Build unused bones group in memory (appended later to protect importer armature detection)
+            var unusedRoot = new NodeBuilder(baseName + "_UnusedBones");
+            unusedRoot.LocalTransform = System.Numerics.Matrix4x4.CreateScale(0.0001f);
+
+            // Build SRP data block in memory
             var srpRoot = new NodeBuilder(baseName + "_SaffireRestPoseData");
-            scene.AddNode(srpRoot);
+            srpRoot.LocalTransform = System.Numerics.Matrix4x4.CreateScale(0.0001f);
 
             for (int i = 0; i < bhd.Bones.Count; i++)
             {
+                var m = bhd.Bones[i].Transform;
+                bool isUnused = float.IsNaN(m.M11);
+
                 if (bhd.Bones[i].ParentIndex != 0xFFFFFFFF && bhd.Bones[i].ParentIndex != i)
                 {
                     gltfNodes[bhd.Bones[i].ParentIndex].AddNode(gltfNodes[i]);
                 }
                 else
                 {
-                    masterSkeletonRoot.AddNode(gltfNodes[i]);
+                    if (isUnused)
+                    {
+                        unusedRoot.AddNode(gltfNodes[i]);
+                    }
+                    else
+                    {
+                        masterSkeletonRoot.AddNode(gltfNodes[i]);
+                    }
                 }
 
                 // Duplicate the pure rest matrix into hidden nodes using pure translation to survive Blender TRS decomposition
-                var m = bhd.Bones[i].Transform;
-                if (float.IsNaN(m.M11)) m = Matrix.Identity; // FIX: Prevent NaN values from crashing SharpGLTF
-
                 var srpNode = new NodeBuilder("SRP_" + nameSlots[i]);
+
+                if (isUnused) m = Matrix.Identity; // FIX: Prevent NaN values from crashing SharpGLTF
+
                 srpNode.LocalTransform = ConvertBhdMatrix(m);
                 srpRoot.AddNode(srpNode);
 
@@ -202,6 +235,10 @@ namespace LOMNTool.GLTF
                 r5.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M14, m.M24, m.M34);
                 srpNode.AddNode(r5);
             }
+
+            // Append hidden groups at the end so the importer parses active bones first
+            masterSkeletonRoot.AddNode(unusedRoot);
+            masterSkeletonRoot.AddNode(srpRoot);
 
             ParseMeshes(xFile, null, meshBuilder, gltfNodes, preserveUnusedMaterials);
 
