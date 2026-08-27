@@ -175,11 +175,12 @@ namespace LOMNTool.GLTF
                 }
 
                 // Duplicate the pure rest matrix into hidden nodes using pure translation to survive Blender TRS decomposition
-                var srpNode = new NodeBuilder("SRP_" + nameSlots[i]);
-                srpRoot.AddNode(srpNode);
-
                 var m = bhd.Bones[i].Transform;
                 if (float.IsNaN(m.M11)) m = Matrix.Identity; // FIX: Prevent NaN values from crashing SharpGLTF
+
+                var srpNode = new NodeBuilder("SRP_" + nameSlots[i]);
+                srpNode.LocalTransform = ConvertBhdMatrix(m);
+                srpRoot.AddNode(srpNode);
 
                 var r1 = new NodeBuilder("R1_" + nameSlots[i]);
                 r1.LocalTransform = System.Numerics.Matrix4x4.CreateTranslation(m.M11, m.M12, m.M13);
