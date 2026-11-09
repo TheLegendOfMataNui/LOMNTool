@@ -1,9 +1,9 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.27130.2027
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LOMNTool", "LOMNTool.csproj", "{BA4EAD50-49BE-4804-92FC-A87F7910D17F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "LOMNTool", "LOMNTool.csproj", "{BA4EAD50-49BE-4804-92FC-A87F7910D17F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
